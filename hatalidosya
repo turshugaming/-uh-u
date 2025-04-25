@@ -43,7 +43,7 @@ public class Main extends Application {
 
     // Constants
     private static final String APP_NAME = "TerraMonic";
-    private static final String APP_DATA = System.getProperty("user.home") + File.separator + ".terramonic";
+    private static final String APP_DATA = System.getenv("APPDATA") + File.separator + "TerraMonic";
     private static final String MC_VERSION = "1.21.4";
     private static final String FABRIC_VERSION = "0.16.13";
     private static final String GAME_JAR = "fabric-loader-0.16.13-1.21.4.jar";
@@ -78,6 +78,7 @@ public class Main extends Application {
     private Button playBtn;
     private AtomicBoolean isGameRunning = new AtomicBoolean(false);
     private VBox newsItemsContainer;
+    private StackPane splash;
 
     // Data
     private JSONObject versionData;
@@ -169,6 +170,8 @@ public class Main extends Application {
         }
     }
 
+
+
     private void saveConfig() {
         try {
             java.nio.file.Path configFile = Paths.get(APP_DATA, "launcher.properties");
@@ -177,6 +180,51 @@ public class Main extends Application {
             }
         } catch (IOException e) {
             log("Konfigürasyon dosyası kaydedilemedi: " + e.getMessage());
+        }
+    }
+
+    private void showNewsFromJson() {
+        try {
+            String versionJsonUrl = VERSION_JSON;
+            HttpURLConnection connection = (HttpURLConnection) new URL(versionJsonUrl).openConnection();
+            connection.setRequestMethod("GET");
+            connection.connect();
+
+            if (connection.getResponseCode() == 200) {
+                InputStream inputStream = connection.getInputStream();
+                String json = new BufferedReader(new InputStreamReader(inputStream))
+                        .lines().collect(Collectors.joining("\n"));
+                JSONObject versionJson = new JSONObject(json);
+
+                JSONObject news = versionJson.getJSONObject("haberler");
+
+                Label title1 = new Label(news.getString("baslik"));
+                title1.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+                title1.setTextFill(TEXT_COLOR);
+
+                Label content1 = new Label(news.getString("icerik"));
+                content1.setFont(Font.font("Arial", 14));
+                content1.setTextFill(TEXT_COLOR);
+
+                Label title2 = new Label(news.getString("baslik2"));
+                title2.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+                title2.setTextFill(TEXT_COLOR);
+
+                Label content2 = new Label(news.getString("icerik2"));
+                content2.setFont(Font.font("Arial", 14));
+                content2.setTextFill(TEXT_COLOR);
+
+                VBox newsContainer = new VBox(10, title1, content1, new Separator(), title2, content2);
+                newsContainer.setPadding(new Insets(10));
+                newsContainer.setStyle("-fx-background-color: rgba(0, 0, 0, 0.5);");
+
+                newsItemsContainer.getChildren().clear();
+                newsItemsContainer.getChildren().add(newsContainer);
+            } else {
+                log("Haberler yüklenemedi, hata kodu: " + connection.getResponseCode());
+            }
+        } catch (Exception e) {
+            log("Haberler yüklenirken bir hata oluştu: " + e.getMessage());
         }
     }
 
@@ -1150,16 +1198,106 @@ public class Main extends Application {
     private void setProgressUI(double v) {
     }
 
-    private void downloadFile(String url, java.nio.file.Path target) throws IOException, URISyntaxException {
-        HttpURLConnection connection = (HttpURLConnection) new URI(url).toURL().openConnection();
-        connection.setRequestMethod("GET");
-        connection.setConnectTimeout(5000);
-        connection.setReadTimeout(5000);
+    private void updateConsole(String message) {
+        Platform.runLater(() -> {
+            if (statusLabel != null) {
+                statusLabel.setText(message);
+            }
+        });
+    }
 
-        Files.createDirectories(target.getParent());
-        try (ReadableByteChannel rbc = Channels.newChannel(connection.getInputStream());
-             FileChannel fc = FileChannel.open(target, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
-            fc.transferFrom(rbc, 0, Long.MAX_VALUE);
+    private void setupDynamicSplashScreen() {
+        Rectangle2D screenBounds = Screen.getPrimary().getVisualBounds();
+        double width = screenBounds.getWidth() * 0.5; // Ekranın %50'si
+        double height = screenBounds.getHeight() * 0.5;
+
+        splash.setPrefSize(width, height);
+        splash.setMaxSize(width, height);
+    }
+
+    private void downloadFile(String url, Path destination) throws IOException {
+        updateConsole("İndiriliyor: " + url);
+        URL website = new URL(url);
+        try (ReadableByteChannel rbc = Channels.newChannel(website.openStream());
+             FileOutputStream fos = new FileOutputStream(destination.toFile())) {
+            fos.getChannel().transferFrom(rbc, 0, Long.MAX_VALUE);
+        }
+    }
+
+    private void verifyAndDownloadGameFiles() {
+        try {
+            Path minecraftPath = Paths.get(APP_DATA, "minecraft-1.21.4.jar");
+            Path fabricPath = Paths.get(APP_DATA, "fabric-installer.jar");
+
+            // Minecraft dosyasını indir
+            if (!Files.exists(minecraftPath)) {
+                updateConsole("Minecraft dosyası eksik. Yeniden indiriliyor...");
+                downloadFile("https://launcher.mojang.com/v1/objects/vanilla-url", minecraftPath);
+                updateConsole("Minecraft indirildi.");
+            } else {
+                updateConsole("Minecraft dosyası mevcut.");
+            }
+
+            // Fabric Installer'ı indir
+            if (!Files.exists(fabricPath)) {
+                updateConsole("Fabric Installer eksik. Yeniden indiriliyor...");
+                downloadFile("https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.0.3/fabric-installer-1.0.3.jar", fabricPath);
+                updateConsole("Fabric Installer indirildi.");
+                installFabric(minecraftPath, fabricPath);
+            } else {
+                updateConsole("Fabric Installer mevcut.");
+            }
+
+            updateConsole("Tüm dosyalar indirildi ve hazır!");
+            playBtn.setDisable(false);
+        } catch (Exception e) {
+            updateConsole("Hata: " + e.getMessage());
+        }
+    }
+
+    // Dosya doğrulama metodu
+    private boolean isFileValid(Path filePath) {
+        try {
+            // Örnek bir doğrulama: Dosya boyutu sıfır mı?
+            return Files.size(filePath) > 0;
+        } catch (IOException e) {
+            updateConsole("Dosya doğrulama hatası: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private void downloadAndPrepareGame() {
+        try {
+            Path minecraftPath = Paths.get(MINECRAFT_DIR, "minecraft-1.21.4.jar");
+            Path fabricPath = Paths.get(MINECRAFT_DIR, "fabric-installer.jar");
+
+            // 1.21.4 Vanilla Minecraft indir.
+            if (!Files.exists(minecraftPath)) {
+                downloadFile("https://launcher.mojang.com/v1/objects/vanilla-url", minecraftPath);
+                updateConsole("Minecraft indirildi.");
+            }
+
+            // Fabric indir ve kur.
+            if (!Files.exists(fabricPath)) {
+                downloadFile(FABRIC_INSTALLER_URL, fabricPath);
+                updateConsole("Fabric indirildi.");
+                installFabric(minecraftPath, fabricPath);
+            }
+
+            updateConsole("Hazır!");
+            playBtn.setDisable(false);
+        } catch (Exception e) {
+            updateConsole("Hata: " + e.getMessage());
+        }
+    }
+
+    private void installFabric(Path minecraftPath, Path fabricPath) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder("java", "-jar", fabricPath.toString(), "client", "--dir", MINECRAFT_DIR);
+            pb.start().waitFor();
+            updateConsole("Fabric kuruldu.");
+        } catch (Exception e) {
+            updateConsole("Fabric kurulumu sırasında hata: " + e.getMessage());
         }
     }
 
