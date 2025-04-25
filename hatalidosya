@@ -186,19 +186,31 @@ public class Main extends Application {
             if (Files.exists(versionFile)) {
                 try (BufferedReader reader = Files.newBufferedReader(versionFile)) {
                     String json = reader.lines().collect(Collectors.joining());
+                    if (json.trim().isEmpty()) {
+                        throw new JSONException("JSON content is empty");
+                    }
                     JSONObject versionJson = new JSONObject(json);
                     currentVersion = versionJson.getString("version");
                 }
             } else {
-                JSONObject versionJson = new JSONObject();
-                versionJson.put("version", currentVersion);
-                Files.createDirectories(versionFile.getParent());
-                try (FileWriter writer = new FileWriter(versionFile.toFile())) {
-                    writer.write(versionJson.toString(2));
-                }
+                createDefaultVersionFile(versionFile);
+            }
+        } catch (IOException | JSONException e) {
+            log("Sürüm dosyası yüklenemedi veya hatalı: " + e.getMessage());
+            createDefaultVersionFile(versionFile);
+        }
+    }
+
+    private void createDefaultVersionFile(java.nio.file.Path versionFile) {
+        try {
+            JSONObject versionJson = new JSONObject();
+            versionJson.put("version", currentVersion);
+            Files.createDirectories(versionFile.getParent());
+            try (FileWriter writer = new FileWriter(versionFile.toFile())) {
+                writer.write(versionJson.toString(2));
             }
         } catch (IOException e) {
-            log("Sürüm dosyası yüklenemedi: " + e.getMessage());
+            log("Varsayılan sürüm dosyası oluşturulamadı: " + e.getMessage());
         }
     }
     //endregion
