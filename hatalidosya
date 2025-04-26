@@ -18,7 +18,6 @@ import javafx.stage.*;
 import javafx.util.Duration;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.json.JSONException;
 
 import java.io.*;
 import java.net.*;
@@ -33,36 +32,34 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
-import javafx.geometry.Rectangle2D;
 
 public class Main extends Application {
 
     // Constants
     private static final String APP_NAME = "TerraMonic";
-    private static final String APP_DATA = System.getenv("APPDATA") + File.separator + "TerraMonic";
+    private static final String APP_DATA = System.getenv("APPDATA") + "/.terramonic";
     private static final String MC_VERSION = "1.21.4";
-    private static final String FABRIC_VERSION = "0.16.13";
-    private static final String GAME_JAR = "fabric-loader-0.16.13-1.21.4.jar";
+    private static final String FABRIC_VERSION = "0.16.14";
+    private static final String GAME_JAR = "fabric-loader-" + FABRIC_VERSION + "-" + MC_VERSION + ".jar";
     private static final String MINECRAFT_DIR = APP_DATA;
     private static final String VERSION_JSON = "https://www.dropbox.com/scl/fi/u7aebmab7drw6syltdw9u/version.json?rlkey=u2ferprl7izcsa3c6we24blxc&st=gvli5gjt&dl=1";
     private static final String ICON_URL = "https://www.dropbox.com/scl/fi/2yc75kqokrtivw202rt3w/icon.png?rlkey=1blmy791i17gs6t78ecjc3qxf&st=3gb5vyf1&dl=1";
     private static final String MINECRAFT_MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
-    private static final String FABRIC_INSTALLER_URL = "https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.0.3/fabric-installer-1.0.3.jar";
+    private static final String FABRIC_INSTALLER_URL = "https://maven.fabricmc.net/net/fabricmc/fabric-installer/0.11.2/fabric-installer-0.11.2.jar";
 
-    // Colors (Enhanced Green-themed palette)
-    private static final Color PRIMARY_COLOR = Color.web("#00cc00");
-    private static final Color PRIMARY_COLOR_DARK = Color.web("#009900");
-    private static final Color SECONDARY_COLOR = Color.web("#33ff33");
-    private static final Color ACCENT_COLOR = Color.web("#006600");
-    private static final Color ERROR_COLOR = Color.web("#ff3333");
-    private static final Color WARNING_COLOR = Color.web("#ffcc00");
-    private static final Color BG_DARK = Color.web("#1a2b1a");
-    private static final Color BG_DARKER = Color.web("#0f1a0f");
-    private static final Color TEXT_COLOR = Color.web("#e6ffe6");
+    // Colors (Green-themed palette)
+    private static final Color PRIMARY_COLOR = Color.web("#2ecc71"); // Bright green
+    private static final Color PRIMARY_COLOR_DARK = Color.web("#27ae60"); // Darker green
+    private static final Color SECONDARY_COLOR = Color.web("#1abc9c"); // Teal-green
+    private static final Color ACCENT_COLOR = Color.web("#16a085"); // Deep green
+    private static final Color ERROR_COLOR = Color.web("#e74c3c");
+    private static final Color WARNING_COLOR = Color.web("#f39c12");
+    private static final Color BG_DARK = Color.web("#0f0f1a");
+    private static final Color BG_DARKER = Color.web("#080812");
+    private static final Color TEXT_COLOR = Color.web("#ecf0f1");
 
     // UI Components
     private StackPane root;
@@ -71,14 +68,13 @@ public class Main extends Application {
     private ImageView playerHead;
     private ProgressBar progressBar;
     private Label statusLabel;
-    private Label progressLabel;
+    private TextArea consoleArea;
     private ComboBox<String> ramComboBox;
     private CheckBox fullscreenCheck;
     private ComboBox<String> resolutionComboBox;
     private Button playBtn;
     private AtomicBoolean isGameRunning = new AtomicBoolean(false);
     private VBox newsItemsContainer;
-    private StackPane splash;
 
     // Data
     private JSONObject versionData;
@@ -88,18 +84,6 @@ public class Main extends Application {
     private boolean offlineMode = false;
     private String minecraftVersionJson;
     private final Map<String, String> minecraftLibraries = new HashMap<>();
-    private final List<String> loadingMessages = Arrays.asList(
-            "Binaları inşa ediyoruz...",
-            "Dünyayı hazırlıyoruz...",
-            "Creeper'ları kontrol ediyoruz...",
-            "Ağaçları dikiyoruz...",
-            "Elmasları gizliyoruz...",
-            "Steve'e selam veriyoruz...",
-            "Zombileri uyandırıyoruz...",
-            "Blokları yerleştiriyoruz...",
-            "İnekleri otlatıyoruz...",
-            "Enderman'leri sakinleştiriyoruz..."
-    );
 
     public static void main(String[] args) {
         launch(args);
@@ -117,7 +101,6 @@ public class Main extends Application {
             newsItemsContainer.setPadding(new Insets(5));
 
             loadConfig();
-            loadCurrentVersion();
             setupStage();
             setupInternalStylesheet();
             showSplashScreen();
@@ -130,7 +113,7 @@ public class Main extends Application {
 
             primaryStage.show();
         } catch (Exception e) {
-            log("Launcher başlatma hatası: " + e.getMessage());
+            e.printStackTrace();
             showError("Launcher başlatma hatası: " + e.getMessage());
         }
     }
@@ -146,7 +129,7 @@ public class Main extends Application {
     //region Configuration Management
     private void loadConfig() {
         config = new Properties();
-        java.nio.file.Path configFile = Paths.get(APP_DATA, "launcher.properties");
+        Path configFile = Paths.get(APP_DATA + "/launcher.properties");
         try {
             if (Files.exists(configFile)) {
                 try (FileInputStream fis = new FileInputStream(configFile.toFile())) {
@@ -159,106 +142,26 @@ public class Main extends Application {
                 config.setProperty("fullscreen", "false");
                 config.setProperty("javaPath", System.getProperty("java.home") + File.separator + "bin" + File.separator +
                         (System.getProperty("os.name").toLowerCase().contains("win") ? "javaw.exe" : "java"));
+                config.setProperty("keepLauncherOpen", "true");
+                config.setProperty("showFPS", "true");
+                config.setProperty("enableVBO", "true");
                 config.setProperty("jvmArgs", "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200");
                 config.setProperty("masterVolume", "80");
                 config.setProperty("musicVolume", "60");
-                config.setProperty("autoUpdate", "true");
-                config.setProperty("performanceMode", "false");
             }
         } catch (IOException e) {
             log("Konfigürasyon dosyası yüklenemedi: " + e.getMessage());
         }
     }
 
-
-
     private void saveConfig() {
         try {
-            java.nio.file.Path configFile = Paths.get(APP_DATA, "launcher.properties");
+            Path configFile = Paths.get(APP_DATA + "/launcher.properties");
             try (FileOutputStream fos = new FileOutputStream(configFile.toFile())) {
                 config.store(fos, "TerraMonic Launcher Config");
             }
         } catch (IOException e) {
             log("Konfigürasyon dosyası kaydedilemedi: " + e.getMessage());
-        }
-    }
-
-    private void showNewsFromJson() {
-        try {
-            String versionJsonUrl = VERSION_JSON;
-            HttpURLConnection connection = (HttpURLConnection) new URL(versionJsonUrl).openConnection();
-            connection.setRequestMethod("GET");
-            connection.connect();
-
-            if (connection.getResponseCode() == 200) {
-                InputStream inputStream = connection.getInputStream();
-                String json = new BufferedReader(new InputStreamReader(inputStream))
-                        .lines().collect(Collectors.joining("\n"));
-                JSONObject versionJson = new JSONObject(json);
-
-                JSONObject news = versionJson.getJSONObject("haberler");
-
-                Label title1 = new Label(news.getString("baslik"));
-                title1.setFont(Font.font("Arial", FontWeight.BOLD, 16));
-                title1.setTextFill(TEXT_COLOR);
-
-                Label content1 = new Label(news.getString("icerik"));
-                content1.setFont(Font.font("Arial", 14));
-                content1.setTextFill(TEXT_COLOR);
-
-                Label title2 = new Label(news.getString("baslik2"));
-                title2.setFont(Font.font("Arial", FontWeight.BOLD, 16));
-                title2.setTextFill(TEXT_COLOR);
-
-                Label content2 = new Label(news.getString("icerik2"));
-                content2.setFont(Font.font("Arial", 14));
-                content2.setTextFill(TEXT_COLOR);
-
-                VBox newsContainer = new VBox(10, title1, content1, new Separator(), title2, content2);
-                newsContainer.setPadding(new Insets(10));
-                newsContainer.setStyle("-fx-background-color: rgba(0, 0, 0, 0.5);");
-
-                newsItemsContainer.getChildren().clear();
-                newsItemsContainer.getChildren().add(newsContainer);
-            } else {
-                log("Haberler yüklenemedi, hata kodu: " + connection.getResponseCode());
-            }
-        } catch (Exception e) {
-            log("Haberler yüklenirken bir hata oluştu: " + e.getMessage());
-        }
-    }
-
-    private void loadCurrentVersion() {
-        java.nio.file.Path versionFile = Paths.get(APP_DATA, "launcher_version.json");
-        try {
-            if (Files.exists(versionFile)) {
-                try (BufferedReader reader = Files.newBufferedReader(versionFile)) {
-                    String json = reader.lines().collect(Collectors.joining());
-                    if (json.trim().isEmpty()) {
-                        throw new JSONException("JSON content is empty");
-                    }
-                    JSONObject versionJson = new JSONObject(json);
-                    currentVersion = versionJson.getString("version");
-                }
-            } else {
-                createDefaultVersionFile(versionFile);
-            }
-        } catch (IOException | JSONException e) {
-            log("Sürüm dosyası yüklenemedi veya hatalı: " + e.getMessage());
-            createDefaultVersionFile(versionFile);
-        }
-    }
-
-    private void createDefaultVersionFile(java.nio.file.Path versionFile) {
-        try {
-            JSONObject versionJson = new JSONObject();
-            versionJson.put("version", currentVersion);
-            Files.createDirectories(versionFile.getParent());
-            try (FileWriter writer = new FileWriter(versionFile.toFile())) {
-                writer.write(versionJson.toString(2));
-            }
-        } catch (IOException e) {
-            log("Varsayılan sürüm dosyası oluşturulamadı: " + e.getMessage());
         }
     }
     //endregion
@@ -275,67 +178,79 @@ public class Main extends Application {
         }
 
         root = new StackPane();
-        root.setStyle("-fx-background-color: " + toRGBCode(BG_DARKER) + "; -fx-background-radius: 15px;");
+        root.setStyle("-fx-background-color: " + toRGBCode(BG_DARKER) + ";");
 
-        Scene scene = new Scene(root, 1024, 600);
-        scene.setFill(Color.TRANSPARENT);
+        Scene scene = new Scene(root, 1280, 720);
 
-        primaryStage.initStyle(StageStyle.TRANSPARENT);
+        primaryStage.initStyle(StageStyle.UNDECORATED);
 
         primaryStage.setMinWidth(1024);
         primaryStage.setMinHeight(600);
 
         primaryStage.setScene(scene);
 
-        Rectangle clip = new Rectangle(1024, 600);
-        clip.setArcWidth(30);
-        clip.setArcHeight(30);
-        root.setClip(clip);
-
         Rectangle2D screenBounds = Screen.getPrimary().getVisualBounds();
-        primaryStage.setX((screenBounds.getWidth() - 1024) / 2);
-        primaryStage.setY((screenBounds.getHeight() - 600) / 2);
+        primaryStage.setX((screenBounds.getWidth() - 1280) / 2);
+        primaryStage.setY((screenBounds.getHeight() - 720) / 2);
     }
 
     private void setupInternalStylesheet() {
         String styleSheet =
                 ".root { -fx-font-family: 'Segoe UI', 'Arial', sans-serif; }" +
-                        ".panel { -fx-background-color: rgba(0, 0, 0, 0.3); -fx-background-radius: 10px; -fx-border-radius: 10px; -fx-border-color: " + toRGBCode(ACCENT_COLOR) + "; -fx-border-width: 1px; }" +
-                        ".separator { -fx-background-color: " + toRGBCode(SECONDARY_COLOR) + "; -fx-opacity: 0.5; }" +
-                        ".text-field { -fx-background-color: rgba(0, 0, 0, 0.4); -fx-text-fill: " + toRGBCode(TEXT_COLOR) + "; -fx-prompt-text-fill: #99cc99; -fx-background-radius: 6px; -fx-padding: 10 14; }" +
-                        ".text-field:focused { -fx-background-color: rgba(0, 0, 0, 0.6); -fx-border-color: " + toRGBCode(PRIMARY_COLOR) + "; -fx-border-width: 2px; -fx-border-radius: 6px; }" +
-                        ".button { -fx-background-color: " + toRGBCode(ACCENT_COLOR) + "; -fx-text-fill: " + toRGBCode(TEXT_COLOR) + "; -fx-background-radius: 6px; -fx-padding: 10 20; -fx-cursor: hand; }" +
-                        ".button:hover { -fx-background-color: " + toRGBCode(PRIMARY_COLOR_DARK) + "; }" +
-                        ".button:pressed { -fx-background-color: " + toRGBCode(ACCENT_COLOR) + "; }" +
-                        ".play-button { -fx-background-color: linear-gradient(to bottom, " + toRGBCode(PRIMARY_COLOR) + ", " + toRGBCode(PRIMARY_COLOR_DARK) + "); -fx-text-fill: " + toRGBCode(TEXT_COLOR) + "; -fx-font-weight: bold; -fx-font-size: 18px; -fx-background-radius: 8px; -fx-padding: 12 40; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 8, 0, 0, 0); }" +
-                        ".play-button:hover { -fx-background-color: linear-gradient(to bottom, " + toRGBCode(SECONDARY_COLOR) + ", " + toRGBCode(PRIMARY_COLOR) + "); }" +
-                        ".play-button:pressed { -fx-background-color: " + toRGBCode(PRIMARY_COLOR_DARK) + "; }" +
+                        ".panel { -fx-background-radius: 8px; -fx-border-radius: 8px; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 10, 0, 0, 0); }" +
+                        ".separator { -fx-background-color: #444; -fx-opacity: 0.7; }" +
+                        ".text-field { -fx-background-color: rgba(0,0,0,0.3); -fx-text-fill: white; -fx-prompt-text-fill: #aaa; -fx-background-radius: 4px; -fx-padding: 8 12; -fx-highlight-fill: " + toRGBCode(PRIMARY_COLOR) + "; }" +
+                        ".text-field:focused { -fx-background-color: rgba(0,0,0,0.5); -fx-border-color: " + toRGBCode(PRIMARY_COLOR) + "; -fx-border-width: 1px; -fx-border-radius: 4px; }" +
+                        ".button { -fx-background-color: rgba(0,0,0,0.3); -fx-text-fill: white; -fx-background-radius: 4px; -fx-padding: 8 15; -fx-cursor: hand; }" +
+                        ".button:hover { -fx-background-color: rgba(0,0,0,0.5); }" +
+                        ".button:pressed { -fx-background-color: rgba(0,0,0,0.7); }" +
+                        ".play-button { -fx-background-color: linear-gradient(to bottom, " + toRGBCode(PRIMARY_COLOR) + ", " + toRGBCode(PRIMARY_COLOR_DARK) + "); -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 16px; -fx-background-radius: 4px; -fx-padding: 10 30; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 5, 0, 0, 0); -fx-cursor: hand; }" +
+                        ".play-button:hover { -fx-background-color: linear-gradient(to bottom, " + toRGBCode(PRIMARY_COLOR) + ", " + toRGBCode(PRIMARY_COLOR) + "); -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 8, 0, 0, 0); }" +
+                        ".play-button:pressed { -fx-background-color: " + toRGBCode(PRIMARY_COLOR_DARK) + "; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 3, 0, 0, 0); }" +
                         ".play-button:disabled { -fx-background-color: #555555; -fx-opacity: 0.7; }" +
-                        ".secondary-button { -fx-background-color: linear-gradient(to bottom, " + toRGBCode(SECONDARY_COLOR) + ", " + toRGBCode(PRIMARY_COLOR_DARK) + "); -fx-text-fill: " + toRGBCode(TEXT_COLOR) + "; -fx-font-weight: bold; -fx-background-radius: 6px; -fx-padding: 10 25; }" +
+                        ".secondary-button { -fx-background-color: linear-gradient(to bottom, " + toRGBCode(SECONDARY_COLOR) + ", " + toRGBCode(SECONDARY_COLOR.darker()) + "); -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 4px; -fx-padding: 8 20; -fx-cursor: hand; }" +
                         ".secondary-button:hover { -fx-background-color: " + toRGBCode(SECONDARY_COLOR) + "; }" +
-                        ".secondary-button:pressed { -fx-background-color: " + toRGBCode(PRIMARY_COLOR_DARK) + "; }" +
-                        ".window-button { -fx-background-color: transparent; -fx-text-fill: " + toRGBCode(TEXT_COLOR) + "; -fx-background-radius: 0; -fx-padding: 5 10; }" +
-                        ".window-button:hover { -fx-background-color: rgba(0, 204, 0, 0.2); }" +
-                        ".window-button-close:hover { -fx-background-color: " + toRGBCode(ERROR_COLOR) + "; }" +
-                        ".progress-bar > .track { -fx-background-color: rgba(0, 0, 0, 0.4); -fx-background-radius: 6px; }" +
-                        ".progress-bar > .bar { -fx-background-color: " + toRGBCode(PRIMARY_COLOR) + "; -fx-background-radius: 6px; }" +
-                        ".combo-box { -fx-background-color: rgba(0, 0, 0, 0.4); -fx-text-fill: " + toRGBCode(TEXT_COLOR) + "; -fx-background-radius: 6px; -fx-padding: 4; }" +
-                        ".combo-box:hover { -fx-background-color: rgba(0, 0, 0, 0.6); }" +
-                        ".combo-box .list-cell { -fx-text-fill: " + toRGBCode(TEXT_COLOR) + "; -fx-background-color: transparent; -fx-padding: 8 12; }" +
-                        ".combo-box .list-view { -fx-background-color: " + toRGBCode(BG_DARK) + "; }" +
-                        ".combo-box .list-view .list-cell:hover { -fx-background-color: rgba(0, 204, 0, 0.3); }" +
+                        ".secondary-button:pressed { -fx-background-color: " + toRGBCode(SECONDARY_COLOR.darker()) + "; }" +
+                        ".small-button { -fx-background-color: rgba(0,0,0,0.3); -fx-text-fill: white; -fx-background-radius: 4px; -fx-padding: 8 10; -fx-cursor: hand; }" +
+                        ".small-button:hover { -fx-background-color: rgba(0,0,0,0.5); }" +
+                        ".small-button:pressed { -fx-background-color: rgba(0,0,0,0.7); }" +
+                        ".window-button { -fx-background-color: transparent; -fx-text-fill: white; -fx-background-radius: 0; -fx-padding: 5 10; -fx-cursor: hand; }" +
+                        ".window-button:hover { -fx-background-color: rgba(255,255,255,0.1); }" +
+                        ".window-button:pressed { -fx-background-color: rgba(255,255,255,0.2); }" +
+                        ".window-button-close { -fx-background-color: transparent; -fx-text-fill: white; -fx-background-radius: 0; -fx-padding: 5 10; -fx-cursor: hand; }" +
+                        ".window-button-close:hover { -fx-background-color: #e81123; }" +
+                        ".window-button-close:pressed { -fx-background-color: #f1707a; }" +
+                        ".progress-bar { -fx-accent: " + toRGBCode(PRIMARY_COLOR) + "; }" +
+                        ".progress-bar > .track { -fx-background-color: rgba(0,0,0,0.3); -fx-background-radius: 4px; }" +
+                        ".progress-bar > .bar { -fx-background-radius: 4px; -fx-background-insets: 0; }" +
+                        ".combo-box { -fx-background-color: rgba(0,0,0,0.3); -fx-text-fill: white; -fx-background-radius: 4px; -fx-padding: 2; -fx-cursor: hand; }" +
+                        ".combo-box:hover { -fx-background-color: rgba(0,0,0,0.5); }" +
+                        ".combo-box:showing { -fx-background-color: rgba(0,0,0,0.6); }" +
+                        ".combo-box .list-cell { -fx-text-fill: white; -fx-background-color: transparent; -fx-padding: 6 10; }" +
+                        ".combo-box .list-view { -fx-background-color: #333; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.6), 8, 0, 0, 0); }" +
+                        ".combo-box .list-view .list-cell { -fx-background-color: transparent; }" +
+                        ".combo-box .list-view .list-cell:hover { -fx-background-color: rgba(0,0,0,0.3); }" +
                         ".combo-box .list-view .list-cell:selected { -fx-background-color: " + toRGBCode(PRIMARY_COLOR) + "; }" +
-                        ".check-box { -fx-text-fill: " + toRGBCode(TEXT_COLOR) + "; }" +
-                        ".check-box .box { -fx-background-color: rgba(0, 0, 0, 0.4); -fx-border-color: " + toRGBCode(SECONDARY_COLOR) + "; -fx-border-radius: 4px; }" +
-                        ".check-box:selected .box { -fx-background-color: " + toRGBCode(PRIMARY_COLOR) + "; }" +
-                        ".slider .track { -fx-background-color: rgba(0, 0, 0, 0.4); }" +
+                        ".check-box { -fx-text-fill: white; }" +
+                        ".check-box .box { -fx-background-color: rgba(0,0,0,0.3); -fx-border-color: #777; -fx-border-radius: 3px; }" +
+                        ".check-box:selected .mark { -fx-background-color: white; }" +
+                        ".check-box:selected .box { -fx-background-color: " + toRGBCode(PRIMARY_COLOR) + "; -fx-border-color: " + toRGBCode(PRIMARY_COLOR) + "; }" +
+                        ".slider .track { -fx-background-color: rgba(0,0,0,0.3); }" +
                         ".slider .thumb { -fx-background-color: " + toRGBCode(PRIMARY_COLOR) + "; }" +
-                        ".news-item { -fx-background-color: transparent; -fx-background-radius: 10px; -fx-padding: 15; }" +
-                        ".news-item:hover { -fx-background-color: rgba(0, 204, 0, 0.1); }" +
-                        ".scroll-pane { -fx-background: transparent; }" +
+                        ".console { -fx-font-family: 'Consolas', 'Courier New', monospace; -fx-background-color: rgba(0,0,0,0.3); -fx-text-fill: " + toRGBCode(PRIMARY_COLOR) + "; -fx-highlight-fill: #666; }" +
+                        ".info-box { -fx-background-color: rgba(0,0,0,0.3); -fx-background-radius: 6px; -fx-border-radius: 6px; }" +
+                        ".news-item { -fx-background-color: rgba(0,0,0,0.2); -fx-background-radius: 5px; -fx-border-radius: 5px; -fx-padding: 10; }" +
+                        ".news-item:hover { -fx-background-color: rgba(0,0,0,0.3); }" +
+                        ".scroll-pane { -fx-background: transparent; -fx-background-color: transparent; }" +
                         ".scroll-pane > .viewport { -fx-background-color: transparent; }" +
-                        ".scroll-pane > .scroll-bar { -fx-background-color: rgba(0, 0, 0, 0.3); }" +
-                        ".scroll-pane > .scroll-bar > .thumb { -fx-background-color: " + toRGBCode(SECONDARY_COLOR) + "; }";
+                        ".scroll-pane > .scroll-bar { -fx-background-color: rgba(0,0,0,0.2); -fx-background-radius: 5; }" +
+                        ".scroll-pane > .scroll-bar > .thumb { -fx-background-color: rgba(255,255,255,0.3); -fx-background-radius: 5; }" +
+                        ".scroll-pane > .scroll-bar > .thumb:hover { -fx-background-color: rgba(255,255,255,0.4); }" +
+                        ".scroll-pane > .scroll-bar > .thumb:pressed { -fx-background-color: rgba(255,255,255,0.5); }" +
+                        ".scroll-pane > .corner { -fx-background-color: transparent; }" +
+                        ".tab-pane > .tab-header-area > .headers-region > .tab { -fx-background-color: rgba(0,0,0,0.3); -fx-background-radius: 4 4 0 0; }" +
+                        ".tab-pane > .tab-header-area > .headers-region > .tab:selected { -fx-background-color: rgba(0,0,0,0.5); }" +
+                        ".tab-pane > .tab-header-area > .headers-region > .tab > .tab-container > .tab-label { -fx-text-fill: white; }";
 
         try {
             File tempCss = File.createTempFile("terramonic", ".css");
@@ -351,93 +266,8 @@ public class Main extends Application {
 
     private void showSplashScreen() {
         StackPane splash = new StackPane();
-        splash.setStyle("-fx-background-color: linear-gradient(to bottom, " + toRGBCode(BG_DARKER) + ", " + toRGBCode(BG_DARK) + "); -fx-background-radius: 15px;");
+        splash.setStyle("-fx-background-color: linear-gradient(to bottom, " + toRGBCode(BG_DARKER) + ", " + toRGBCode(BG_DARK) + ");");
         splash.setEffect(new DropShadow(20, Color.BLACK));
-
-        VBox content = new VBox(15);
-        content.setAlignment(Pos.CENTER);
-        content.setPadding(new Insets(20));
-
-        ImageView logo = new ImageView();
-        try {
-            Image logoImage = new Image(ICON_URL, 100, 100, true, true);
-            logo.setImage(logoImage);
-            logo.setFitWidth(100);
-            logo.setFitHeight(100);
-            logo.setEffect(new DropShadow(10, PRIMARY_COLOR_DARK));
-        } catch (Exception e) {
-            log("Logo yüklenemedi: " + e.getMessage());
-            Rectangle fallback = new Rectangle(100, 100, PRIMARY_COLOR);
-            fallback.setArcWidth(20);
-            fallback.setArcHeight(20);
-            content.getChildren().add(fallback);
-        }
-
-        Label title = new Label(APP_NAME);
-        title.setFont(Font.font("Arial", FontWeight.BOLD, 36));
-        title.setTextFill(PRIMARY_COLOR);
-        title.setEffect(new DropShadow(10, PRIMARY_COLOR_DARK));
-
-        progressBar = new ProgressBar(0.0);
-        progressBar.setPrefWidth(300);
-        progressBar.setStyle("-fx-accent: " + toRGBCode(PRIMARY_COLOR) + ";");
-
-        statusLabel = new Label("Yükleniyor...");
-        statusLabel.setTextFill(TEXT_COLOR);
-        statusLabel.setFont(Font.font("Arial", 14));
-
-        progressLabel = new Label("0%");
-        progressLabel.setTextFill(TEXT_COLOR);
-        progressLabel.setFont(Font.font("Arial", 14));
-
-        Label versionLabel = new Label("v" + currentVersion);
-        versionLabel.setTextFill(TEXT_COLOR);
-        versionLabel.setFont(Font.font("Arial", 14));
-
-        content.getChildren().addAll(logo, title, progressBar, statusLabel, progressLabel, versionLabel);
-        splash.getChildren().add(content);
-        root.getChildren().add(splash);
-
-        // Açılış animasyonu
-        ScaleTransition scale = new ScaleTransition(Duration.millis(500), content);
-        scale.setFromX(0.5);
-        scale.setFromY(0.5);
-        scale.setToX(1.0);
-        scale.setToY(1.0);
-
-        FadeTransition fade = new FadeTransition(Duration.millis(500), splash);
-        fade.setFromValue(0.0);
-        fade.setToValue(1.0);
-
-        ParallelTransition parallel = new ParallelTransition(scale, fade);
-        parallel.play();
-
-        Timeline loadingTextAnimation = new Timeline();
-        loadingTextAnimation.setCycleCount(Animation.INDEFINITE);
-
-        AtomicInteger messageIndex = new AtomicInteger(0);
-        KeyFrame kf = new KeyFrame(Duration.seconds(2), event -> {
-            String nextMessage = loadingMessages.get(messageIndex.getAndIncrement() % loadingMessages.size());
-            FadeTransition fadeOut = new FadeTransition(Duration.millis(200), statusLabel);
-            fadeOut.setFromValue(1.0);
-            fadeOut.setToValue(0.0);
-            fadeOut.setOnFinished(e -> {
-                statusLabel.setText(nextMessage);
-                FadeTransition fadeIn = new FadeTransition(Duration.millis(200), statusLabel);
-                fadeIn.setFromValue(0.0);
-                fadeIn.setToValue(1.0);
-                fadeIn.play();
-            });
-            fadeOut.play();
-        });
-
-        loadingTextAnimation.getKeyFrames().add(kf);
-        loadingTextAnimation.play();
-    }
-
-    private void showMaintenanceScreen(String reason) {
-        StackPane maintenancePane = new StackPane();
-        maintenancePane.setStyle("-fx-background-color: linear-gradient(to bottom, " + toRGBCode(BG_DARKER) + ", " + toRGBCode(BG_DARK) + "); -fx-background-radius: 15px;");
 
         VBox content = new VBox(20);
         content.setAlignment(Pos.CENTER);
@@ -445,63 +275,51 @@ public class Main extends Application {
 
         ImageView logo = new ImageView();
         try {
-            Image logoImage = new Image(ICON_URL, 100, 100, true, true);
+            Image logoImage = new Image(ICON_URL, 140, 140, true, true);
             logo.setImage(logoImage);
-            logo.setFitWidth(100);
-            logo.setFitHeight(100);
+            logo.setFitWidth(140);
+            logo.setFitHeight(140);
             logo.setEffect(new DropShadow(10, PRIMARY_COLOR_DARK));
         } catch (Exception e) {
             log("Logo yüklenemedi: " + e.getMessage());
+            Rectangle fallback = new Rectangle(140, 140, PRIMARY_COLOR);
+            fallback.setArcWidth(20);
+            fallback.setArcHeight(20);
+            content.getChildren().add(fallback);
         }
 
-        Label title = new Label("Sunucular Bakım Modunda");
-        title.setFont(Font.font("Arial", FontWeight.BOLD, 30));
+        Label title = new Label(APP_NAME);
+        title.setFont(Font.font("Arial", FontWeight.BOLD, 42));
         title.setTextFill(PRIMARY_COLOR);
+        title.setEffect(new DropShadow(10, PRIMARY_COLOR_DARK));
 
-        Label reasonLabel = new Label(reason);
-        reasonLabel.setFont(Font.font("Arial", 14));
-        reasonLabel.setTextFill(TEXT_COLOR);
-        reasonLabel.setWrapText(true);
-        reasonLabel.setMaxWidth(350);
-        reasonLabel.setAlignment(Pos.CENTER);
+        progressBar = new ProgressBar(0.0);
+        progressBar.setPrefWidth(400);
+        progressBar.setStyle("-fx-accent: " + toRGBCode(PRIMARY_COLOR) + ";");
 
-        Button retryBtn = new Button("Yeniden Dene");
-        retryBtn.getStyleClass().add("secondary-button");
-        retryBtn.setOnAction(e -> {
-            FadeTransition fadeOut = new FadeTransition(Duration.millis(300), maintenancePane);
-            fadeOut.setFromValue(1.0);
-            fadeOut.setToValue(0.0);
-            fadeOut.setOnFinished(ev -> {
-                root.getChildren().clear();
-                showSplashScreen();
-                checkForUpdates();
-            });
-            fadeOut.play();
-        });
+        statusLabel = new Label("Yükleniyor...");
+        statusLabel.setTextFill(TEXT_COLOR);
+        statusLabel.setFont(Font.font("Arial", 14));
 
-        content.getChildren().addAll(logo, title, reasonLabel, retryBtn);
-        maintenancePane.getChildren().add(content);
+        Label versionLabel = new Label("v" + currentVersion);
+        versionLabel.setTextFill(TEXT_COLOR);
+        versionLabel.setFont(Font.font("Arial", 14));
 
-        root.getChildren().clear();
-        root.getChildren().add(maintenancePane);
-
-        // Açılış animasyonu
-        FadeTransition fadeIn = new FadeTransition(Duration.millis(500), maintenancePane);
-        fadeIn.setFromValue(0.0);
-        fadeIn.setToValue(1.0);
-        fadeIn.play();
+        content.getChildren().addAll(logo, title, progressBar, statusLabel, versionLabel);
+        splash.getChildren().add(content);
+        root.getChildren().add(splash);
     }
     //endregion
 
     //region Main UI Components
     private void showMainUI() {
-        BorderPane mainContainer = createMainUIContainer();
-
         FadeTransition fadeOut = new FadeTransition(Duration.millis(300), root.getChildren().get(0));
         fadeOut.setFromValue(1.0);
         fadeOut.setToValue(0.0);
         fadeOut.setOnFinished(e -> {
             root.getChildren().clear();
+
+            BorderPane mainContainer = createMainUIContainer();
             root.getChildren().add(mainContainer);
 
             FadeTransition fadeIn = new FadeTransition(Duration.millis(500), mainContainer);
@@ -520,7 +338,7 @@ public class Main extends Application {
 
     private BorderPane createMainUIContainer() {
         BorderPane mainContainer = new BorderPane();
-        mainContainer.setStyle("-fx-background-color: linear-gradient(to bottom, " + toRGBCode(BG_DARKER) + ", " + toRGBCode(BG_DARK) + "); -fx-background-radius: 15px;");
+        mainContainer.setStyle("-fx-background-color: linear-gradient(to bottom, " + toRGBCode(BG_DARKER) + ", " + toRGBCode(BG_DARK) + ");");
 
         HBox titleBar = createTitleBar();
         mainContainer.setTop(titleBar);
@@ -549,7 +367,7 @@ public class Main extends Application {
         HBox titleBar = new HBox();
         titleBar.setAlignment(Pos.CENTER_LEFT);
         titleBar.setPadding(new Insets(10, 15, 10, 15));
-        titleBar.setStyle("-fx-background-color: " + toRGBCode(BG_DARKER) + "; -fx-background-radius: 15px 15px 0 0;");
+        titleBar.setStyle("-fx-background-color: " + toRGBCode(BG_DARKER) + ";");
 
         ImageView logo = new ImageView();
         try {
@@ -576,9 +394,21 @@ public class Main extends Application {
 
         HBox controlButtons = new HBox(10);
 
-        Button minimizeBtn = new Button("-");
+        Button minimizeBtn = new Button("_");
         minimizeBtn.getStyleClass().add("window-button");
         minimizeBtn.setOnAction(e -> primaryStage.setIconified(true));
+
+        Button maximizeBtn = new Button("□");
+        maximizeBtn.getStyleClass().add("window-button");
+        maximizeBtn.setOnAction(e -> {
+            if (primaryStage.isMaximized()) {
+                primaryStage.setMaximized(false);
+                maximizeBtn.setText("□");
+            } else {
+                primaryStage.setMaximized(true);
+                maximizeBtn.setText("❐");
+            }
+        });
 
         Button closeBtn = new Button("X");
         closeBtn.getStyleClass().add("window-button-close");
@@ -588,7 +418,7 @@ public class Main extends Application {
             System.exit(0);
         });
 
-        controlButtons.getChildren().addAll(minimizeBtn, closeBtn);
+        controlButtons.getChildren().addAll(minimizeBtn, maximizeBtn, closeBtn);
 
         if (logo.getImage() != null) {
             titleBar.getChildren().addAll(logo, title, spacer, controlButtons);
@@ -604,6 +434,18 @@ public class Main extends Application {
         titleBar.setOnMouseDragged(e -> {
             primaryStage.setX(e.getScreenX() + dragDelta.x);
             primaryStage.setY(e.getScreenY() + dragDelta.y);
+        });
+
+        titleBar.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2) {
+                if (primaryStage.isMaximized()) {
+                    primaryStage.setMaximized(false);
+                    maximizeBtn.setText("□");
+                } else {
+                    primaryStage.setMaximized(true);
+                    maximizeBtn.setText("❐");
+                }
+            }
         });
 
         return titleBar;
@@ -625,50 +467,54 @@ public class Main extends Application {
         playerLabel.setFont(Font.font("Arial", FontWeight.BOLD, 18));
         playerLabel.setTextFill(TEXT_COLOR);
 
+        HBox playerBox = new HBox(15);
+        playerBox.setAlignment(Pos.CENTER_LEFT);
+
+        playerHead = new ImageView();
+        playerHead.setFitWidth(60);
+        playerHead.setFitHeight(60);
+        playerHead.setEffect(new DropShadow(10, Color.BLACK));
+
+        Rectangle defaultHead = new Rectangle(60, 60, Color.rgb(60, 60, 60));
+        playerHead.setImage(new WritableImage(60, 60));
+
+        VBox playerInfoBox = new VBox(10);
+        playerInfoBox.setAlignment(Pos.CENTER_LEFT);
+
         usernameField = new TextField();
         usernameField.setPromptText("Kullanıcı Adı");
-        usernameField.setPrefWidth(260);
+        usernameField.setPrefWidth(180);
         usernameField.textProperty().addListener((obs, oldVal, newVal) -> {
             config.setProperty("username", newVal);
             updatePlayerHead(newVal);
         });
+
+        Button logoutBtn = new Button("Çıkış");
+        logoutBtn.getStyleClass().add("small-button");
+        logoutBtn.setVisible(false);
+
+        playerInfoBox.getChildren().addAll(usernameField, logoutBtn);
+        playerBox.getChildren().addAll(playerHead, playerInfoBox);
 
         playBtn = new Button("OYNA");
         playBtn.getStyleClass().add("play-button");
         playBtn.setMaxWidth(Double.MAX_VALUE);
         playBtn.setPrefHeight(50);
         playBtn.setDisable(true);
+
         playBtn.setOnAction(e -> launchGame());
 
-        playerHead = new ImageView();
-        playerHead.setFitWidth(60);
-        playerHead.setFitHeight(60);
-        playerHead.setEffect(new DropShadow(10, Color.BLACK));
-        Rectangle defaultHead = new Rectangle(60, 60, Color.rgb(60, 60, 60));
-        playerHead.setImage(new WritableImage(60, 60));
+        Label consoleLabel = new Label("Konsol");
+        consoleLabel.setFont(Font.font("Arial", FontWeight.BOLD, 14));
+        consoleLabel.setTextFill(TEXT_COLOR);
 
-        HBox playerBox = new HBox(15);
-        playerBox.setAlignment(Pos.CENTER_LEFT);
-        playerBox.getChildren().add(playerHead);
+        consoleArea = new TextArea();
+        consoleArea.getStyleClass().add("console");
+        consoleArea.setEditable(false);
+        consoleArea.setPrefHeight(150);
+        consoleArea.setWrapText(true);
 
-        Label statusHeader = new Label("Durum");
-        statusHeader.setFont(Font.font("Arial", FontWeight.BOLD, 14));
-        statusHeader.setTextFill(TEXT_COLOR);
-
-        statusLabel = new Label("Hazırlanıyor...");
-        statusLabel.setTextFill(TEXT_COLOR);
-        statusLabel.setFont(Font.font("Arial", 12));
-
-        progressLabel = new Label("0%");
-        progressLabel.setTextFill(TEXT_COLOR);
-        progressLabel.setFont(Font.font("Arial", 12));
-
-        playerSection.getChildren().addAll(
-                playerLabel, new Separator(),
-                usernameField, playBtn, playerBox,
-                new Separator(),
-                statusHeader, statusLabel, progressLabel
-        );
+        playerSection.getChildren().addAll(playerLabel, new Separator(), playerBox, playBtn, consoleLabel, consoleArea);
 
         return playerSection;
     }
@@ -685,11 +531,7 @@ public class Main extends Application {
         settingsLabel.setFont(Font.font("Arial", FontWeight.BOLD, 18));
         settingsLabel.setTextFill(TEXT_COLOR);
 
-        // Sistem bilgisi
-        long totalMemoryMB = Runtime.getRuntime().maxMemory() / (1024 * 1024);
-        int recommendedRam = Math.min((int) (totalMemoryMB / 1024), 16);
-        if (recommendedRam < 2) recommendedRam = 2;
-
+        // RAM Box
         HBox ramBox = new HBox(10);
         ramBox.setAlignment(Pos.CENTER_LEFT);
         Label ramLabel = new Label("RAM:");
@@ -697,16 +539,14 @@ public class Main extends Application {
         ramLabel.setPrefWidth(120);
         ramComboBox = new ComboBox<>();
         ramComboBox.getItems().addAll("2", "4", "6", "8", "12", "16");
-        ramComboBox.setValue(String.valueOf(recommendedRam));
+        ramComboBox.setValue(config.getProperty("ram", "4"));
         ramComboBox.setPrefWidth(80);
         ramComboBox.valueProperty().addListener((obs, oldVal, newVal) -> config.setProperty("ram", newVal));
         Label gbLabel = new Label("GB");
         gbLabel.setTextFill(TEXT_COLOR);
         ramBox.getChildren().addAll(ramLabel, ramComboBox, gbLabel);
 
-        Rectangle2D screenBounds = Screen.getPrimary().getVisualBounds();
-        String recommendedResolution = String.format("%.0fx%.0f", screenBounds.getWidth(), screenBounds.getHeight());
-
+        // Resolution Box
         HBox resolutionBox = new HBox(10);
         resolutionBox.setAlignment(Pos.CENTER_LEFT);
         Label resolutionLabel = new Label("Çözünürlük:");
@@ -714,21 +554,23 @@ public class Main extends Application {
         resolutionLabel.setPrefWidth(120);
         resolutionComboBox = new ComboBox<>();
         resolutionComboBox.getItems().addAll("800x600", "1024x768", "1280x720", "1366x768", "1600x900", "1920x1080", "2560x1440");
-        resolutionComboBox.setValue(recommendedResolution);
+        resolutionComboBox.setValue(config.getProperty("resolution", "1280x720"));
         resolutionComboBox.setPrefWidth(120);
         resolutionComboBox.valueProperty().addListener((obs, oldVal, newVal) -> config.setProperty("resolution", newVal));
         resolutionBox.getChildren().addAll(resolutionLabel, resolutionComboBox);
 
+        // Fullscreen Box
         HBox fullscreenBox = new HBox(10);
         fullscreenBox.setAlignment(Pos.CENTER_LEFT);
         Label fullscreenLabel = new Label("Tam Ekran:");
         fullscreenLabel.setTextFill(TEXT_COLOR);
         fullscreenLabel.setPrefWidth(120);
         fullscreenCheck = new CheckBox();
-        fullscreenCheck.setSelected(screenBounds.getWidth() >= 1920);
+        fullscreenCheck.setSelected(Boolean.parseBoolean(config.getProperty("fullscreen", "false")));
         fullscreenCheck.selectedProperty().addListener((obs, oldVal, newVal) -> config.setProperty("fullscreen", newVal.toString()));
         fullscreenBox.getChildren().addAll(fullscreenLabel, fullscreenCheck);
 
+        // Version Box
         HBox versionBox = new HBox(10);
         versionBox.setAlignment(Pos.CENTER_LEFT);
         Label versionLabel = new Label("Minecraft Sürümü:");
@@ -739,6 +581,7 @@ public class Main extends Application {
         versionValueLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
         versionBox.getChildren().addAll(versionLabel, versionValueLabel);
 
+        // Fabric Box
         HBox fabricBox = new HBox(10);
         fabricBox.setAlignment(Pos.CENTER_LEFT);
         Label fabricLabel = new Label("Fabric Sürümü:");
@@ -749,32 +592,36 @@ public class Main extends Application {
         fabricValueLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
         fabricBox.getChildren().addAll(fabricLabel, fabricValueLabel);
 
-        HBox autoUpdateBox = new HBox(10);
-        autoUpdateBox.setAlignment(Pos.CENTER_LEFT);
-        Label autoUpdateLabel = new Label("Otomatik Güncelle:");
-        autoUpdateLabel.setTextFill(TEXT_COLOR);
-        autoUpdateLabel.setPrefWidth(120);
-        CheckBox autoUpdateCheck = new CheckBox();
-        autoUpdateCheck.setSelected(Boolean.parseBoolean(config.getProperty("autoUpdate", "true")));
-        autoUpdateCheck.selectedProperty().addListener((obs, oldVal, newVal) -> config.setProperty("autoUpdate", newVal.toString()));
-        autoUpdateBox.getChildren().addAll(autoUpdateLabel, autoUpdateCheck);
+        // Keep Launcher Open
+        HBox keepOpenBox = new HBox(10);
+        keepOpenBox.setAlignment(Pos.CENTER_LEFT);
+        Label keepOpenLabel = new Label("Launcher Açık Kalsın:");
+        keepOpenLabel.setTextFill(TEXT_COLOR);
+        keepOpenLabel.setPrefWidth(120);
+        CheckBox keepOpenCheck = new CheckBox();
+        keepOpenCheck.setSelected(Boolean.parseBoolean(config.getProperty("keepLauncherOpen", "true")));
+        keepOpenCheck.selectedProperty().addListener((obs, oldVal, newVal) -> config.setProperty("keepLauncherOpen", newVal.toString()));
+        keepOpenBox.getChildren().addAll(keepOpenLabel, keepOpenCheck);
 
-        HBox performanceModeBox = new HBox(10);
-        performanceModeBox.setAlignment(Pos.CENTER_LEFT);
-        Label performanceModeLabel = new Label("Performans Modu:");
-        performanceModeLabel.setTextFill(TEXT_COLOR);
-        performanceModeLabel.setPrefWidth(120);
-        CheckBox performanceModeCheck = new CheckBox();
-        performanceModeCheck.setSelected(Boolean.parseBoolean(config.getProperty("performanceMode", totalMemoryMB < 8192 ? "true" : "false")));
-        performanceModeCheck.selectedProperty().addListener((obs, oldVal, newVal) -> config.setProperty("performanceMode", newVal.toString()));
-        performanceModeBox.getChildren().addAll(performanceModeLabel, performanceModeCheck);
+        // Show FPS
+        HBox showFPSBox = new HBox(10);
+        showFPSBox.setAlignment(Pos.CENTER_LEFT);
+        Label showFPSLabel = new Label("FPS Göster:");
+        showFPSLabel.setTextFill(TEXT_COLOR);
+        showFPSLabel.setPrefWidth(120);
+        CheckBox showFPSCheck = new CheckBox();
+        showFPSCheck.setSelected(Boolean.parseBoolean(config.getProperty("showFPS", "true")));
+        showFPSCheck.selectedProperty().addListener((obs, oldVal, newVal) -> config.setProperty("showFPS", newVal.toString()));
+        showFPSBox.getChildren().addAll(showFPSLabel, showFPSCheck);
 
+        // Volume Box
         VBox volumeBox = new VBox(10);
         volumeBox.setAlignment(Pos.CENTER_LEFT);
         Label volumeLabel = new Label("Ses");
         volumeLabel.setFont(Font.font("Arial", FontWeight.BOLD, 14));
         volumeLabel.setTextFill(TEXT_COLOR);
 
+        // Master Volume
         HBox masterVolumeBox = new HBox(10);
         masterVolumeBox.setAlignment(Pos.CENTER_LEFT);
         Label masterVolumeLabel = new Label("Ana Ses:");
@@ -790,6 +637,7 @@ public class Main extends Application {
         });
         masterVolumeBox.getChildren().addAll(masterVolumeLabel, masterVolumeSlider, masterVolumeValue);
 
+        // Music Volume
         HBox musicVolumeBox = new HBox(10);
         musicVolumeBox.setAlignment(Pos.CENTER_LEFT);
         Label musicVolumeLabel = new Label("Müzik:");
@@ -813,7 +661,7 @@ public class Main extends Application {
                 new Separator(),
                 versionBox, fabricBox,
                 new Separator(),
-                autoUpdateBox, performanceModeBox,
+                keepOpenBox, showFPSBox,
                 new Separator(),
                 volumeBox
         );
@@ -827,7 +675,7 @@ public class Main extends Application {
         newsSection.setPadding(new Insets(20));
         newsSection.setPrefWidth(300);
         newsSection.getStyleClass().add("panel");
-        newsSection.setStyle("-fx-background-color: transparent;");
+        newsSection.setStyle("-fx-background-color: rgba(0, 0, 0, 0.3);");
 
         Label newsLabel = new Label("Duyurular & Haberler");
         newsLabel.setFont(Font.font("Arial", FontWeight.BOLD, 18));
@@ -857,7 +705,7 @@ public class Main extends Application {
         HBox footer = new HBox();
         footer.setAlignment(Pos.CENTER_LEFT);
         footer.setPadding(new Insets(10, 15, 10, 15));
-        footer.setStyle("-fx-background-color: " + toRGBCode(BG_DARKER) + "; -fx-background-radius: 0 0 15px 15px;");
+        footer.setStyle("-fx-background-color: " + toRGBCode(BG_DARKER) + ";");
 
         Label versionLabel = new Label("TerraMonic Launcher v" + currentVersion);
         versionLabel.setTextFill(TEXT_COLOR);
@@ -910,125 +758,19 @@ public class Main extends Application {
             alert.setTitle("Hata");
             alert.setHeaderText("Bir hata oluştu");
             alert.setContentText(message);
-
-            Stage alertStage = (Stage) alert.getDialogPane().getScene().getWindow();
-            alertStage.initStyle(StageStyle.TRANSPARENT);
-
-            // Dialog penceresinin sahnesini tamamen şeffaf yap
-            Scene alertScene = alert.getDialogPane().getScene();
-            alertScene.setFill(Color.TRANSPARENT);
-
-            // Dialog penceresinin kök elemanını özelleştir
-            alert.getDialogPane().setStyle(
-                    "-fx-background-color: " + toRGBCode(BG_DARKER) + ";" +
-                            "-fx-background-radius: 10px;" +
-                            "-fx-border-color: " + toRGBCode(ACCENT_COLOR) + ";" +
-                            "-fx-border-width: 1px;" +
-                            "-fx-border-radius: 10px;"
-            );
-            alert.getDialogPane().lookup(".content").setStyle("-fx-text-fill: " + toRGBCode(TEXT_COLOR) + ";");
-            alert.getDialogPane().lookup(".header-panel").setStyle(
-                    "-fx-background-color: " + toRGBCode(BG_DARK) + ";" +
-                            "-fx-text-fill: " + toRGBCode(PRIMARY_COLOR) + ";"
-            );
-
-            // Buton stilini ayarla
-            ButtonType okButton = alert.getButtonTypes().get(0);
-            Button okNode = (Button) alert.getDialogPane().lookupButton(okButton);
-            okNode.setStyle(
-                    "-fx-background-color: " + toRGBCode(PRIMARY_COLOR) + ";" +
-                            "-fx-text-fill: " + toRGBCode(TEXT_COLOR) + ";" +
-                            "-fx-background-radius: 5px;"
-            );
-
-            // Yumuşak köşeler için clip uygula
-            Rectangle clip = new Rectangle(400, 200);
-            clip.setArcWidth(20);
-            clip.setArcHeight(20);
-            alert.getDialogPane().setClip(clip);
-
-            // Dialog penceresini boyutlandır ve ortala
-            alert.getDialogPane().setMinWidth(400);
-            alert.getDialogPane().setMinHeight(200);
-            alertStage.setX(primaryStage.getX() + (primaryStage.getWidth() - 400) / 2);
-            alertStage.setY(primaryStage.getY() + (primaryStage.getHeight() - 200) / 2);
-
             alert.showAndWait();
         });
     }
 
-    private void showUpdateDialog(String newVersion) {
-        Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-            alert.setTitle("Yeni Güncelleme");
-            alert.setHeaderText("Yeni bir güncelleme mevcut: v" + newVersion);
-            alert.setContentText("Şimdi güncellemek ister misiniz?");
-
-            Stage alertStage = (Stage) alert.getDialogPane().getScene().getWindow();
-            alertStage.initStyle(StageStyle.TRANSPARENT);
-
-            // Dialog penceresinin sahnesini tamamen şeffaf yap
-            Scene alertScene = alert.getDialogPane().getScene();
-            alertScene.setFill(Color.TRANSPARENT);
-
-            // Dialog penceresinin kök elemanını özelleştir
-            alert.getDialogPane().setStyle(
-                    "-fx-background-color: " + toRGBCode(BG_DARKER) + ";" +
-                            "-fx-background-radius: 10px;" +
-                            "-fx-border-color: " + toRGBCode(ACCENT_COLOR) + ";" +
-                            "-fx-border-width: 1px;" +
-                            "-fx-border-radius: 10px;"
-            );
-            alert.getDialogPane().lookup(".content").setStyle("-fx-text-fill: " + toRGBCode(TEXT_COLOR) + ";");
-            alert.getDialogPane().lookup(".header-panel").setStyle(
-                    "-fx-background-color: " + toRGBCode(BG_DARK) + ";" +
-                            "-fx-text-fill: " + toRGBCode(PRIMARY_COLOR) + ";"
-            );
-
-            // Buton stilini ayarla
-            ButtonType okButton = alert.getButtonTypes().get(0);
-            Button okNode = (Button) alert.getDialogPane().lookupButton(okButton);
-            okNode.setStyle(
-                    "-fx-background-color: " + toRGBCode(PRIMARY_COLOR) + ";" +
-                            "-fx-text-fill: " + toRGBCode(TEXT_COLOR) + ";" +
-                            "-fx-background-radius: 5px;"
-            );
-
-            // Yumuşak köşeler için clip uygula
-            Rectangle clip = new Rectangle(400, 200);
-            clip.setArcWidth(20);
-            clip.setArcHeight(20);
-            alert.getDialogPane().setClip(clip);
-
-            // Dialog penceresini boyutlandır ve ortala
-            alert.getDialogPane().setMinWidth(400);
-            alert.getDialogPane().setMinHeight(200);
-            alertStage.setX(primaryStage.getX() + (primaryStage.getWidth() - 400) / 2);
-            alertStage.setY(primaryStage.getY() + (primaryStage.getHeight() - 200) / 2);
-
-            Optional<ButtonType> result = alert.showAndWait();
-            if (result.isPresent() && result.get() == ButtonType.OK) {
-                downloadUpdate(newVersion);
-            } else {
-                updateStatus("Hazır");
-                updateProgress(0.5);
-                loadNews();
-                showMainUI();
-            }
-        });
-    }
-
     private void log(String message) {
-        String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
-        try {
-            java.nio.file.Path logDir = Paths.get(APP_DATA, "logs");
-            Files.createDirectories(logDir);
-            java.nio.file.Path logFile = logDir.resolve("launcher.log");
-            Files.write(logFile, ("[" + timestamp + "] " + message + "\n").getBytes(),
-                    Files.exists(logFile) ? StandardOpenOption.APPEND : StandardOpenOption.CREATE);
-        } catch (IOException e) {
-            System.err.println("Log yazılamadı: " + e.getMessage());
-        }
+        Platform.runLater(() -> {
+            if (consoleArea != null) {
+                String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+                consoleArea.appendText("[" + timestamp + "] " + message + "\n");
+                consoleArea.positionCaret(consoleArea.getText().length());
+            }
+            System.out.println(message);
+        });
     }
 
     private void updateStatus(String status) {
@@ -1044,22 +786,12 @@ public class Main extends Application {
             if (progressBar != null) {
                 progressBar.setProgress(progress);
             }
-            if (progressLabel != null) {
-                progressLabel.setText(String.format("%d%%", (int) (progress * 100)));
-            }
         });
     }
 
     private void openWebPage(String url) {
         try {
-            String os = System.getProperty("os.name").toLowerCase();
-            if (os.contains("win")) {
-                new ProcessBuilder("cmd", "/c", "start", url).start();
-            } else if (os.contains("mac")) {
-                new ProcessBuilder("open", url).start();
-            } else {
-                new ProcessBuilder("xdg-open", url).start();
-            }
+            new ProcessBuilder("cmd", "/c", "start", url).start();
         } catch (IOException e) {
             log("Web sayfası açılamadı: " + e.getMessage());
             showError("Web sayfası açılamadı: " + url);
@@ -1071,11 +803,10 @@ public class Main extends Application {
     private void createAppDataFolder() {
         try {
             Files.createDirectories(Paths.get(APP_DATA));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR, "libraries"));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR, "versions"));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR, "assets"));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR, "mods"));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR, "natives"));
+            Files.createDirectories(Paths.get(MINECRAFT_DIR + "/libraries"));
+            Files.createDirectories(Paths.get(MINECRAFT_DIR + "/versions"));
+            Files.createDirectories(Paths.get(MINECRAFT_DIR + "/assets"));
+            Files.createDirectories(Paths.get(MINECRAFT_DIR + "/mods"));
             log("Uygulama dizinleri oluşturuldu: " + APP_DATA);
         } catch (IOException e) {
             log("Dizin oluşturma hatası: " + e.getMessage());
@@ -1084,229 +815,141 @@ public class Main extends Application {
     }
 
     private void checkForUpdates() {
-        // Main sınıfına referans (anonim sınıflar içinde kullanmak için)
-        final Main mainInstance = this;
-
-        // Task'i bir değişkende tutmak için
-        final Task<Boolean> updateTask = new Task<>() {
-            @Override
-            protected Boolean call() throws Exception {
-                mainInstance.updateStatus("Güncellemeler kontrol ediliyor..."); // Main referansı ile çağrı
-                updateProgress(0, 2); // Task'in kendi updateProgress metodu (0/2)
-
-                try {
-                    URI uri = new URI(VERSION_JSON);
-                    HttpURLConnection connection = (HttpURLConnection) uri.toURL().openConnection();
-                    connection.setRequestMethod("GET");
-                    connection.setConnectTimeout(5000);
-                    connection.setReadTimeout(5000);
-
-                    // Önce response'u bir string olarak oku
-                    String responseString;
-                    try (InputStream in = connection.getInputStream();
-                         BufferedReader reader = new BufferedReader(new InputStreamReader(in))) {
-                        responseString = reader.lines().collect(Collectors.joining());
-                    }
-
-                    // Gelen veriyi loglayalım
-                    mainInstance.log("Gelen veri: " + responseString);
-
-                    // JSON formatını kontrol et
-                    if (responseString == null || responseString.trim().isEmpty()) {
-                        throw new JSONException("Boş yanıt alındı");
-                    }
-
-                    responseString = responseString.trim();
-
-                    // Yanıtın JSON obje mi yoksa array mi olduğunu kontrol et
-                    if (!responseString.startsWith("{") && !responseString.startsWith("[")) {
-                        throw new JSONException("Geçersiz JSON formatı: " + responseString.substring(0, Math.min(50, responseString.length())));
-                    }
-
-                    updateProgress(1, 5); // Task'in kendi updateProgress metodu (1/5)
-
-                    try {
-                        // JSON'u parse et
-                        mainInstance.versionData = new JSONObject(responseString);
-
-                        // Bakım modu kontrolü
-                        if (mainInstance.versionData.has("bakimmodu") && mainInstance.versionData.getBoolean("bakimmodu")) {
-                            String reason = mainInstance.versionData.optString("bakimmodusebebi", "Bakım modu aktif, lütfen daha sonra tekrar deneyin.");
-                            Platform.runLater(() -> mainInstance.showMaintenanceScreen(reason));
-                            return false;
-                        }
-
-                        // Versiyon kontrolü
-                        String latestVersion = mainInstance.versionData.getString("version");
-                        if (!latestVersion.equals(mainInstance.currentVersion)) {
-                            Platform.runLater(() -> mainInstance.showUpdateDialog(latestVersion));
-                            return false;
-                        }
-
-                        updateProgress(2, 5); // Task'in kendi updateProgress metodu (2/5)
-                        return true;
-                    } catch (JSONException e) {
-                        throw new JSONException("JSON parse hatası: " + e.getMessage() + ", Veri: " + responseString);
-                    }
-                } catch (Exception e) {
-                    mainInstance.log("Güncelleme kontrolü başarısız: " + e.getMessage());
-                    throw e;
-                }
-            }
-        };
-
         Service<Boolean> updateService = new Service<>() {
             @Override
             protected Task<Boolean> createTask() {
-                return updateTask; // Oluşturduğumuz Task'ı döndürüyoruz
+                return new Task<Boolean>() {
+                    @Override
+                    protected Boolean call() throws Exception {
+                        updateStatus("Güncellemeler kontrol ediliyor...");
+                        updateProgress(0.1);
+
+                        URI uri = new URI(VERSION_JSON);
+                        HttpURLConnection connection = (HttpURLConnection) uri.toURL().openConnection();
+                        connection.setRequestMethod("GET");
+                        connection.setConnectTimeout(5000);
+                        connection.setReadTimeout(5000);
+
+                        try (InputStream in = connection.getInputStream();
+                             BufferedReader reader = new BufferedReader(new InputStreamReader(in))) {
+                            StringBuilder response = new StringBuilder();
+                            String line;
+                            while ((line = reader.readLine()) != null) {
+                                response.append(line);
+                            }
+
+                            updateProgress(0.2);
+                            versionData = new JSONObject(response.toString());
+
+                            // Check maintenance mode
+                            if (versionData.has("bakimmodu") && versionData.getBoolean("bakimmodu")) {
+                                Platform.runLater(() -> {
+                                    showError("Sunucular bakım modunda. Lütfen daha sonra tekrar deneyin.");
+                                    Platform.exit();
+                                    System.exit(0);
+                                });
+                                return false;
+                            }
+
+                            // Download and extract additional files
+                            if (versionData.has("ekdosyalar")) {
+                                JSONArray extraFiles = versionData.getJSONArray("ekdosyalar");
+                                int totalFiles = extraFiles.length();
+                                for (int i = 0; i < totalFiles; i++) {
+                                    JSONObject file = extraFiles.getJSONObject(i);
+                                    String name = file.getString("ad");
+                                    String url = file.getString("url");
+                                    Path targetPath = Paths.get(APP_DATA, name);
+
+                                    updateStatus("İndiriliyor: " + name);
+                                    downloadFile(url, targetPath);
+
+                                    if (name.endsWith(".zip")) {
+                                        updateStatus("Ayıklanıyor: " + name);
+                                        extractZip(targetPath, Paths.get(APP_DATA));
+                                        Files.deleteIfExists(targetPath);
+                                        log("Zip dosyası silindi: " + name);
+                                    }
+
+                                    updateProgress(0.2 + (i + 1) * 0.2 / totalFiles);
+                                }
+
+                                updateStatus("Boş dizinler temizleniyor...");
+                                cleanEmptyDirectories(Paths.get(APP_DATA));
+                            }
+
+                            updateProgress(0.4);
+                            return true;
+                        }
+                    }
+
+                    private void updateProgress(double v) {
+                    }
+                };
             }
         };
 
-        // Task'in progressProperty'sine bir dinleyici ekleyerek UI'ı güncelle
-        updateTask.progressProperty().addListener((obs, oldProgress, newProgress) -> {
-            mainInstance.setProgressUI(newProgress.doubleValue()); // Main referansı ile çağrı
-        });
-
         updateService.setOnSucceeded(event -> {
-            if (updateService.getValue()) {
-                mainInstance.updateStatus("En son sürümü kullanıyorsunuz");
-                mainInstance.setProgressUI(0.5); // Main referansı ile çağrı
-                mainInstance.loadNews();
-                PauseTransition pause = new PauseTransition(Duration.seconds(1));
-                pause.setOnFinished(e -> mainInstance.showMainUI());
-                pause.play();
+            if (versionData != null && versionData.has("version")) {
+                String latestVersion = versionData.getString("version");
+                log("En son versiyon: " + latestVersion);
+                log("Mevcut versiyon: " + currentVersion);
+
+                if (!latestVersion.equals(currentVersion)) {
+                    updateStatus("Yeni güncelleme mevcut: " + latestVersion);
+                    showUpdateDialog(latestVersion);
+                } else {
+                    updateStatus("En son sürümü kullanıyorsunuz");
+                    updateProgress(0.5);
+                    loadNews();
+                    PauseTransition pause = new PauseTransition(Duration.seconds(1));
+                    pause.setOnFinished(e -> showMainUI());
+                    pause.play();
+                }
+            } else {
+                updateStatus("Versiyon bilgisi alınamadı");
+                offlineMode = true;
+                loadNews();
+                showMainUI();
             }
         });
 
         updateService.setOnFailed(event -> {
+            updateProgress(0.0);
             Throwable exception = updateService.getException();
-            String errorMsg = exception != null ? exception.getMessage() : "Bilinmeyen hata";
-            mainInstance.log("Güncelleme kontrolü başarısız: " + errorMsg);
-
-            // Hata detayını kullanıcıya göstermek yerine daha genel bir mesaj veriyoruz
-            Platform.runLater(() -> {
-                mainInstance.updateStatus("Çevrimdışı mod");
-                mainInstance.offlineMode = true;
-                mainInstance.loadNews();
-                mainInstance.showMainUI();
-            });
+            log("Güncelleme kontrolü başarısız: " + (exception != null ? exception.getMessage() : "Bilinmeyen hata"));
+            updateStatus("Çevrimdışı mod");
+            offlineMode = true;
+            loadNews();
+            showMainUI();
         });
 
         updateService.start();
     }
 
-    private void setProgressUI(double v) {
-    }
-
-    private void updateConsole(String message) {
-        Platform.runLater(() -> {
-            if (statusLabel != null) {
-                statusLabel.setText(message);
-            }
-        });
-    }
-
-    private void setupDynamicSplashScreen() {
-        Rectangle2D screenBounds = Screen.getPrimary().getVisualBounds();
-        double width = screenBounds.getWidth() * 0.5; // Ekranın %50'si
-        double height = screenBounds.getHeight() * 0.5;
-
-        splash.setPrefSize(width, height);
-        splash.setMaxSize(width, height);
-    }
-
-    private void downloadFile(String url, Path destination) throws IOException {
-        updateConsole("İndiriliyor: " + url);
-        URL website = new URL(url);
-        try (ReadableByteChannel rbc = Channels.newChannel(website.openStream());
-             FileOutputStream fos = new FileOutputStream(destination.toFile())) {
-            fos.getChannel().transferFrom(rbc, 0, Long.MAX_VALUE);
-        }
-    }
-
-    private void verifyAndDownloadGameFiles() {
+    private void downloadFile(String url, Path target) throws IOException {
         try {
-            Path minecraftPath = Paths.get(APP_DATA, "minecraft-1.21.4.jar");
-            Path fabricPath = Paths.get(APP_DATA, "fabric-installer.jar");
+            HttpURLConnection connection = (HttpURLConnection) new URI(url).toURL().openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
 
-            // Minecraft dosyasını indir
-            if (!Files.exists(minecraftPath)) {
-                updateConsole("Minecraft dosyası eksik. Yeniden indiriliyor...");
-                downloadFile("https://launcher.mojang.com/v1/objects/vanilla-url", minecraftPath);
-                updateConsole("Minecraft indirildi.");
-            } else {
-                updateConsole("Minecraft dosyası mevcut.");
+            Files.createDirectories(target.getParent());
+            try (ReadableByteChannel rbc = Channels.newChannel(connection.getInputStream());
+                 FileChannel fc = FileChannel.open(target, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+                fc.transferFrom(rbc, 0, Long.MAX_VALUE);
             }
-
-            // Fabric Installer'ı indir
-            if (!Files.exists(fabricPath)) {
-                updateConsole("Fabric Installer eksik. Yeniden indiriliyor...");
-                downloadFile("https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.0.3/fabric-installer-1.0.3.jar", fabricPath);
-                updateConsole("Fabric Installer indirildi.");
-                installFabric(minecraftPath, fabricPath);
-            } else {
-                updateConsole("Fabric Installer mevcut.");
-            }
-
-            updateConsole("Tüm dosyalar indirildi ve hazır!");
-            playBtn.setDisable(false);
-        } catch (Exception e) {
-            updateConsole("Hata: " + e.getMessage());
+        } catch (URISyntaxException e) {
+            throw new IOException("Geçersiz URL: " + url, e);
         }
     }
 
-    // Dosya doğrulama metodu
-    private boolean isFileValid(Path filePath) {
-        try {
-            // Örnek bir doğrulama: Dosya boyutu sıfır mı?
-            return Files.size(filePath) > 0;
-        } catch (IOException e) {
-            updateConsole("Dosya doğrulama hatası: " + e.getMessage());
-            return false;
-        }
-    }
-
-    private void downloadAndPrepareGame() {
-        try {
-            Path minecraftPath = Paths.get(MINECRAFT_DIR, "minecraft-1.21.4.jar");
-            Path fabricPath = Paths.get(MINECRAFT_DIR, "fabric-installer.jar");
-
-            // 1.21.4 Vanilla Minecraft indir.
-            if (!Files.exists(minecraftPath)) {
-                downloadFile("https://launcher.mojang.com/v1/objects/vanilla-url", minecraftPath);
-                updateConsole("Minecraft indirildi.");
-            }
-
-            // Fabric indir ve kur.
-            if (!Files.exists(fabricPath)) {
-                downloadFile(FABRIC_INSTALLER_URL, fabricPath);
-                updateConsole("Fabric indirildi.");
-                installFabric(minecraftPath, fabricPath);
-            }
-
-            updateConsole("Hazır!");
-            playBtn.setDisable(false);
-        } catch (Exception e) {
-            updateConsole("Hata: " + e.getMessage());
-        }
-    }
-
-    private void installFabric(Path minecraftPath, Path fabricPath) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder("java", "-jar", fabricPath.toString(), "client", "--dir", MINECRAFT_DIR);
-            pb.start().waitFor();
-            updateConsole("Fabric kuruldu.");
-        } catch (Exception e) {
-            updateConsole("Fabric kurulumu sırasında hata: " + e.getMessage());
-        }
-    }
-
-    private void extractZip(java.nio.file.Path zipFile, java.nio.file.Path destDir) throws IOException {
+    private void extractZip(Path zipFile, Path destDir) throws IOException {
         Files.createDirectories(destDir);
         try (ZipInputStream zis = new ZipInputStream(Files.newInputStream(zipFile))) {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
-                java.nio.file.Path entryPath = destDir.resolve(entry.getName());
+                Path entryPath = destDir.resolve(entry.getName());
                 if (entry.isDirectory()) {
                     Files.createDirectories(entryPath);
                 } else {
@@ -1324,11 +967,11 @@ public class Main extends Application {
         }
     }
 
-    private void cleanEmptyDirectories(java.nio.file.Path dir) throws IOException {
+    private void cleanEmptyDirectories(Path dir) throws IOException {
         Files.walkFileTree(dir, new SimpleFileVisitor<>() {
             @Override
-            public FileVisitResult postVisitDirectory(java.nio.file.Path dir, IOException exc) throws IOException {
-                try (DirectoryStream<java.nio.file.Path> stream = Files.newDirectoryStream(dir)) {
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
                     if (!stream.iterator().hasNext() && !dir.equals(Paths.get(APP_DATA))) {
                         Files.delete(dir);
                         log("Boş dizin silindi: " + dir);
@@ -1339,23 +982,31 @@ public class Main extends Application {
         });
     }
 
+    private void showUpdateDialog(String newVersion) {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle("Yeni Güncelleme");
+            alert.setHeaderText("Yeni bir güncelleme mevcut: v" + newVersion);
+            alert.setContentText("Şimdi güncellemek ister misiniz?");
+
+            Optional<ButtonType> result = alert.showAndWait();
+            if (result.isPresent() && result.get() == ButtonType.OK) {
+                downloadUpdate(newVersion);
+            } else {
+                updateStatus("Hazır");
+                updateProgress(0.5);
+                loadNews();
+                showMainUI();
+            }
+        });
+    }
+
     private void downloadUpdate(String newVersion) {
         log("Güncelleme indiriliyor: v" + newVersion);
         updateStatus("Güncelleme indiriliyor...");
         PauseTransition pause = new PauseTransition(Duration.seconds(2));
         pause.setOnFinished(e -> {
             currentVersion = newVersion;
-            java.nio.file.Path versionFile = Paths.get(APP_DATA, "launcher_version.json");
-            JSONObject versionJson = new JSONObject();
-            versionJson.put("version", currentVersion);
-            try {
-                Files.createDirectories(versionFile.getParent());
-                try (FileWriter writer = new FileWriter(versionFile.toFile())) {
-                    writer.write(versionJson.toString(2));
-                }
-            } catch (IOException ex) {
-                log("Sürüm dosyası yazılamadı: " + ex.getMessage());
-            }
             saveConfig();
             updateStatus("Güncelleme tamamlandı");
             updateProgress(0.5);
@@ -1406,98 +1057,276 @@ public class Main extends Application {
         newsItem.getStyleClass().add("news-item");
 
         Label titleLabel = new Label(title);
-        titleLabel.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+        titleLabel.setFont(Font.font("Arial", FontWeight.BOLD, 14));
         titleLabel.setTextFill(PRIMARY_COLOR);
         titleLabel.setWrapText(true);
 
         Label contentLabel = new Label(content);
-        contentLabel.setFont(Font.font("Arial", 14));
+        contentLabel.setFont(Font.font("Arial", 12));
         contentLabel.setTextFill(TEXT_COLOR);
         contentLabel.setWrapText(true);
 
-        newsItem.getChildren().addAll(titleLabel, contentLabel);
+        Separator separator = new Separator();
+
+        newsItem.getChildren().addAll(titleLabel, contentLabel, separator);
         return newsItem;
     }
 
     private void checkGameInstallation() {
-        Service<Boolean> installService = new Service<>() {
+        Service<Void> installationService = new Service<>() {
             @Override
-            protected Task<Boolean> createTask() {
+            protected Task<Void> createTask() {
                 return new Task<>() {
                     @Override
-                    protected Boolean call() throws Exception {
-                        updateStatus("Oyun dosyaları kontrol ediliyor...");
-                        updateProgress(0.5);
-
-                        updateStatus("Minecraft 1.21.4 kontrol ediliyor...");
-                        if (!installVanillaMinecraft()) {
-                            updateStatus("Minecraft vanilla yüklenemedi");
-                            return false;
-                        }
-
-                        updateStatus("Kütüphaneler kontrol ediliyor...");
-                        updateProgress(0.6);
-                        if (!downloadMinecraftLibraries()) {
-                            updateStatus("Kütüphaneler indirilemedi");
-                            return false;
-                        }
-
-                        updateStatus("Fabric kontrol ediliyor...");
-                        updateProgress(0.7);
-                        if (!checkFabricInstallation()) {
-                            updateStatus("Fabric yüklenemedi");
-                            return false;
-                        }
-
-                        updateStatus("Resources kontrol ediliyor...");
-                        updateProgress(0.8);
-                        if (!downloadAssets()) {
-                            updateStatus("Resources indirilemedi");
-                            return false;
-                        }
-
-                        updateStatus("Hazır");
-                        updateProgress(1.0);
-                        return true;
-                    }
-
-                    private void updateProgress(double v) {
+                    protected Void call() throws Exception {
+                        performGameInstallation();
+                        return null;
                     }
                 };
             }
         };
 
-        installService.setOnSucceeded(event -> {
-            if (installService.getValue()) {
-                Platform.runLater(() -> playBtn.setDisable(false));
-                log("Oyun kurulumu tamamlandı");
+        installationService.setOnSucceeded(e -> {
+            log("Oyun kurulumu tamamlandı");
+            updateUIAfterInstallation(true);
+        });
+
+        installationService.setOnFailed(e -> {
+            Throwable ex = installationService.getException();
+            log("Oyun kurulumu başarısız: " + (ex != null ? ex.getMessage() : "Bilinmeyen hata"));
+            updateUIAfterInstallation(false);
+        });
+
+        installationService.start();
+    }
+
+    private void performGameInstallation() {
+        updateInstallationStatus("Oyun dosyaları kontrol ediliyor...", 0.5);
+        try {
+            // Verify game files
+            verifyGameFiles();
+
+            // Install vanilla Minecraft
+            if (!installVanillaMinecraft()) {
+                handleInstallationError("Vanilla Minecraft kurulumu başarısız");
+                return;
+            }
+
+            // Fetch version JSON
+            updateInstallationStatus("Sürüm bilgileri alınıyor...", 0.6);
+            if (!fetchMinecraftVersionJson()) {
+                handleInstallationError("Sürüm bilgisi alınamadı");
+                return;
+            }
+
+            // Download libraries
+            updateInstallationStatus("Kütüphaneler indiriliyor...", 0.7);
+            if (!downloadMinecraftLibraries()) {
+                handleInstallationError("Kütüphaneler indirilemedi");
+                return;
+            }
+
+            // Install Fabric
+            if (!ensureFabricInstalled()) {
+                return; // Error already handled
+            }
+
+            // Download assets
+            updateInstallationStatus("Oyun kaynakları indiriliyor...", 0.9);
+            if (!downloadAssets()) {
+                handleInstallationError("Oyun kaynakları indirilemedi");
+                return;
+            }
+
+            // Installation complete
+            completeInstallation();
+            cleanupAfterInstallation();
+        } catch (Exception e) {
+            handleInstallationError("Kurulum sırasında beklenmeyen hata: " + e.getMessage());
+        }
+    }
+
+    private void verifyGameFiles() {
+        updateInstallationStatus("Oyun dosyaları doğrulanıyor...", 0.3);
+        try {
+            // Ensure directories exist
+            Files.createDirectories(Paths.get(MINECRAFT_DIR, "versions"));
+            Files.createDirectories(Paths.get(MINECRAFT_DIR, "libraries"));
+            Files.createDirectories(Paths.get(MINECRAFT_DIR, "assets"));
+            Files.createDirectories(Paths.get(MINECRAFT_DIR, "natives"));
+
+            // Verify core files
+            Path fabricJar = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION + "-fabric-" + FABRIC_VERSION, GAME_JAR);
+            if (!Files.exists(fabricJar)) {
+                throw new IOException("Fabric JAR bulunamadı");
+            }
+
+            Path mcJar = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".jar");
+            if (!Files.exists(mcJar)) {
+                throw new IOException("Minecraft JAR bulunamadı");
+            }
+
+            updateInstallationStatus("Oyun dosyaları doğrulandı", 0.4);
+        } catch (Exception e) {
+            handleInstallationError("Dosya doğrulama hatası: " + e.getMessage());
+        }
+    }
+
+    private boolean ensureFabricInstalled() {
+        Path fabricJarPath = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION + "-fabric-" + FABRIC_VERSION, GAME_JAR);
+        Path versionDir = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION + "-fabric-" + FABRIC_VERSION);
+        Path versionJsonPath = versionDir.resolve(MC_VERSION + "-fabric-" + FABRIC_VERSION + ".json");
+
+        if (!Files.exists(fabricJarPath) || !Files.exists(versionJsonPath)) {
+            updateInstallationStatus("Fabric yükleniyor...", 0.7);
+            try {
+                // Create temp directory
+                Path tempDir = Paths.get(MINECRAFT_DIR, "temp");
+                Files.createDirectories(tempDir);
+
+                // Download installer
+                Path installerPath = tempDir.resolve("fabric-installer.jar");
+                updateInstallationStatus("Fabric yükleyici indiriliyor...", 0.75);
+                downloadFile(FABRIC_INSTALLER_URL, installerPath);
+
+                // Run installer
+                updateInstallationStatus("Fabric kuruluyor...", 0.8);
+                ProcessBuilder pb = new ProcessBuilder(
+                        getJavaPath(),
+                        "-jar", installerPath.toString(),
+                        "client",
+                        "-dir", MINECRAFT_DIR,
+                        "-mcversion", MC_VERSION,
+                        "-loader", FABRIC_VERSION,
+                        "-noprofile"
+                );
+                pb.redirectErrorStream(true);
+                Process process = pb.start();
+
+                // Monitor installer output
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        log("Fabric Installer: " + line);
+                    }
+                }
+
+                int exitCode = process.waitFor();
+                Files.deleteIfExists(installerPath); // Clean up installer
+
+                if (exitCode != 0) {
+                    handleInstallationError("Fabric yükleyici hata kodu: " + exitCode);
+                    return false;
+                }
+
+                // Verify Fabric JAR and JSON
+                if (!Files.exists(fabricJarPath) || !Files.exists(versionJsonPath)) {
+                    handleInstallationError("Fabric JAR veya JSON dosyası oluşturulamadı");
+                    return false;
+                }
+
+                log("Fabric başarıyla yüklendi");
+                return true;
+            } catch (Exception e) {
+                handleInstallationError("Fabric yükleme hatası: " + e.getMessage());
+                return false;
+            } finally {
+                // Clean up temp directory
+                try {
+                    Path tempDir = Paths.get(MINECRAFT_DIR, "temp");
+                    if (Files.exists(tempDir)) {
+                        deleteDirectory(tempDir);
+                    }
+                } catch (IOException e) {
+                    log("Temp dizini silinirken hata: " + e.getMessage());
+                }
+            }
+        }
+        return true;
+    }
+
+    private void cleanupAfterInstallation() {
+        try {
+            updateInstallationStatus("Temizlik yapılıyor...", 0.95);
+            Path tempDir = Paths.get(MINECRAFT_DIR, "temp");
+            if (Files.exists(tempDir)) {
+                deleteDirectory(tempDir);
+            }
+            updateInstallationStatus("Temizlik tamamlandı", 1.0);
+        } catch (IOException e) {
+            log("Temizlik sırasında hata: " + e.getMessage());
+        }
+    }
+
+    private void updateInstallationStatus(String status, double progress) {
+        Platform.runLater(() -> {
+            updateStatus(status);
+            updateProgress(progress);
+        });
+    }
+
+    private void handleInstallationError(String errorMessage) {
+        log("Kurulum hatası: " + errorMessage);
+        updateInstallationStatus("Hata: " + errorMessage, 0.0);
+        showError(errorMessage);
+    }
+
+    private void completeInstallation() {
+        updateInstallationStatus("Kurulum tamamlandı", 1.0);
+        Platform.runLater(() -> {
+            playBtn.setDisable(false);
+            playBtn.setText("OYNA");
+        });
+    }
+
+    private void updateUIAfterInstallation(boolean success) {
+        Platform.runLater(() -> {
+            if (success) {
+                playBtn.setDisable(false);
+                playBtn.setText("OYNA");
                 updateStatus("Oyun hazır!");
-                initialize();
+                updateProgress(1.0);
             } else {
-                log("Oyun kurulumu başarısız");
-                showError("Oyun dosyaları doğrulanamadı. Lütfen tekrar deneyin.");
+                playBtn.setDisable(true);
+                playBtn.setText("KURULUM HATASI");
+                updateStatus("Kurulum başarısız");
+                updateProgress(0.0);
+                showError("Oyun kurulumu başarısız, lütfen logları kontrol edin.");
             }
         });
+    }
 
-        installService.setOnFailed(event -> {
-            Throwable exception = installService.getException();
-            log("Oyun kurulumu başarısız: " + (exception != null ? exception.getMessage() : "Bilinmeyen hata"));
-            showError("Oyun kurulumu başarısız: " + (exception != null ? exception.getMessage() : "Bilinmeyen hata"));
+    private void checkForJavaInstallation() {
+        try {
+            Process process = Runtime.getRuntime().exec(new String[]{getJavaPath(), "-version"});
+            int exitCode = process.waitFor();
+            if (exitCode != 0) {
+                showError("Java kurulu değil veya yolu yanlış ayarlanmış!");
+            }
+        } catch (Exception e) {
+            showError("Java kontrol edilemedi: " + e.getMessage());
+        }
+    }
+
+    private void deleteDirectory(Path dir) throws IOException {
+        Files.walkFileTree(dir, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
+                Files.delete(dir);
+                return FileVisitResult.CONTINUE;
+            }
         });
-
-        installService.start();
     }
 
     private boolean installVanillaMinecraft() {
         try {
-            java.nio.file.Path vanillaJarPath = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".jar");
-            java.nio.file.Path vanillaJsonPath = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".json");
-
-            if (Files.exists(vanillaJarPath) && Files.exists(vanillaJsonPath)) {
-                return true;
-            }
-
-            updateStatus("Minecraft 1.21.4 indiriliyor...");
+            updateStatus("Vanilla Minecraft indiriliyor...");
             URI manifestUri = new URI(MINECRAFT_MANIFEST_URL);
             HttpURLConnection connection = (HttpURLConnection) manifestUri.toURL().openConnection();
             connection.setRequestMethod("GET");
@@ -1527,29 +1356,37 @@ public class Main extends Application {
                                 versionResponse.append(line);
                             }
                             JSONObject versionJson = new JSONObject(versionResponse.toString());
-                            Files.createDirectories(vanillaJsonPath.getParent());
-                            try (FileWriter writer = new FileWriter(vanillaJsonPath.toFile())) {
-                                writer.write(versionJson.toString(2));
-                            }
 
+                            // Download client.jar
                             JSONObject downloads = versionJson.getJSONObject("downloads");
                             JSONObject client = downloads.getJSONObject("client");
                             String clientUrl = client.getString("url");
                             String clientSha1 = client.getString("sha1");
+                            Path clientPath = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".jar");
+                            Files.createDirectories(clientPath.getParent());
 
-                            downloadFile(clientUrl, vanillaJarPath);
-                            if (!verifyFileChecksum(vanillaJarPath, clientSha1)) {
-                                log("Vanilla JAR doğrulama hatası");
-                                return false;
+                            if (!Files.exists(clientPath) || !verifyFileChecksum(clientPath, clientSha1)) {
+                                downloadFile(clientUrl, clientPath);
+                                if (!verifyFileChecksum(clientPath, clientSha1)) {
+                                    log("Client JAR doğrulama hatası");
+                                    return false;
+                                }
                             }
 
+                            // Save version JSON
+                            Path versionJsonPath = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".json");
+                            try (FileWriter writer = new FileWriter(versionJsonPath.toFile())) {
+                                writer.write(versionJson.toString(2));
+                            }
+
+                            log("Vanilla Minecraft " + MC_VERSION + " kuruldu");
                             return true;
                         }
                     }
                 }
             }
         } catch (Exception e) {
-            log("Minecraft vanilla yükleme hatası: " + e.getMessage());
+            log("Vanilla Minecraft kurulamadı: " + e.getMessage());
             return false;
         }
         return false;
@@ -1557,9 +1394,9 @@ public class Main extends Application {
 
     private boolean fetchMinecraftVersionJson() {
         try {
-            java.nio.file.Path vanillaJsonPath = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".json");
-            if (Files.exists(vanillaJsonPath)) {
-                try (BufferedReader reader = Files.newBufferedReader(vanillaJsonPath)) {
+            Path versionJsonPath = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".json");
+            if (Files.exists(versionJsonPath)) {
+                try (BufferedReader reader = Files.newBufferedReader(versionJsonPath)) {
                     minecraftVersionJson = reader.lines().collect(Collectors.joining());
                     return true;
                 }
@@ -1594,8 +1431,8 @@ public class Main extends Application {
                                 versionResponse.append(line);
                             }
                             minecraftVersionJson = versionResponse.toString();
-                            Files.createDirectories(vanillaJsonPath.getParent());
-                            try (FileWriter writer = new FileWriter(vanillaJsonPath.toFile())) {
+                            Files.createDirectories(versionJsonPath.getParent());
+                            try (FileWriter writer = new FileWriter(versionJsonPath.toFile())) {
                                 writer.write(minecraftVersionJson);
                             }
                             return true;
@@ -1612,13 +1449,10 @@ public class Main extends Application {
 
     private boolean downloadMinecraftLibraries() {
         if (minecraftVersionJson == null) {
-            if (!fetchMinecraftVersionJson()) {
-                return false;
-            }
+            return false;
         }
 
         try {
-            log("Kütüphaneler indiriliyor...");
             JSONObject versionData = new JSONObject(minecraftVersionJson);
             JSONArray libraries = versionData.getJSONArray("libraries");
             for (int i = 0; i < libraries.length(); i++) {
@@ -1629,7 +1463,7 @@ public class Main extends Application {
                 String url = artifact.getString("url");
                 String path = artifact.getString("path");
                 String sha1 = artifact.getString("sha1");
-                java.nio.file.Path targetPath = Paths.get(MINECRAFT_DIR, "libraries", path);
+                Path targetPath = Paths.get(MINECRAFT_DIR, "libraries", path);
                 Files.createDirectories(targetPath.getParent());
 
                 if (Files.exists(targetPath) && verifyFileChecksum(targetPath, sha1)) {
@@ -1652,130 +1486,18 @@ public class Main extends Application {
         }
     }
 
-    private boolean checkFabricInstallation() {
-        java.nio.file.Path fabricJarPath = Paths.get(MINECRAFT_DIR, "versions", "fabric-loader-" + FABRIC_VERSION + "-" + MC_VERSION, "fabric-loader-" + FABRIC_VERSION + "-" + MC_VERSION + ".jar");
-        java.nio.file.Path fabricJsonPath = Paths.get(MINECRAFT_DIR, "versions", "fabric-loader-" + FABRIC_VERSION + "-" + MC_VERSION, "fabric-loader-" + FABRIC_VERSION + "-" + MC_VERSION + ".json");
-
-        if (Files.exists(fabricJarPath) && Files.exists(fabricJsonPath)) {
-            // JSON dosyasını kontrol et
-            try (BufferedReader reader = Files.newBufferedReader(fabricJsonPath)) {
-                String jsonContent = reader.lines().collect(Collectors.joining());
-                if (jsonContent.trim().isEmpty()) {
-                    log("Fabric JSON dosyası boş: " + fabricJsonPath);
-                    return false;
-                }
-                try {
-                    new JSONObject(jsonContent);
-                    log("Fabric zaten yüklü ve JSON geçerli: " + fabricJsonPath);
-                    return true;
-                } catch (JSONException e) {
-                    log("Fabric JSON dosyası geçersiz: " + e.getMessage() + ", Dosya içeriği: " + jsonContent);
-                    // Bozuk JSON varsa dosyaları sil ve yeniden yükle
-                    Files.deleteIfExists(fabricJarPath);
-                    Files.deleteIfExists(fabricJsonPath);
-                }
-            } catch (IOException e) {
-                log("Fabric JSON dosyası okunamadı: " + e.getMessage());
-                return false;
-            }
-        }
-
-        try {
-            java.nio.file.Path profilesPath = Paths.get(MINECRAFT_DIR, "launcher_profiles.json");
-            if (!Files.exists(profilesPath)) {
-                JSONObject profiles = new JSONObject();
-                JSONObject profilesObj = new JSONObject();
-                profiles.put("profiles", profilesObj);
-                profiles.put("selectedProfile", "");
-                try (FileWriter writer = new FileWriter(profilesPath.toFile())) {
-                    writer.write(profiles.toString(2));
-                }
-                log("launcher_profiles.json oluşturuldu");
-            }
-
-            updateStatus("Fabric yükleyici indiriliyor...");
-            java.nio.file.Path installerPath = Paths.get(MINECRAFT_DIR, "fabric-installer.jar");
-            downloadFile(FABRIC_INSTALLER_URL, installerPath);
-
-            log("Fabric yükleniyor...");
-            ProcessBuilder pb = new ProcessBuilder(
-                    config.getProperty("javaPath", System.getProperty("java.home") + File.separator + "bin" + File.separator + "java"),
-                    "-jar", installerPath.toString(),
-                    "client",
-                    "-dir", MINECRAFT_DIR,
-                    "-mcversion", MC_VERSION,
-                    "-loader", FABRIC_VERSION,
-                    "-noprofile"
-            );
-            pb.redirectErrorStream(true);
-            File fabricLogFile = new File(MINECRAFT_DIR, "fabric-installer.log");
-            pb.redirectOutput(ProcessBuilder.Redirect.to(fabricLogFile));
-            Process process = pb.start();
-
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                // Fabric yükleme loglarını oku ve hata mesajını logla
-                StringBuilder fabricInstallLog = new StringBuilder();
-                try (BufferedReader reader = Files.newBufferedReader(fabricLogFile.toPath())) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        fabricInstallLog.append(line).append("\n");
-                    }
-                } catch (IOException e) {
-                    log("Fabric yükleme logu okunamadı: " + e.getMessage());
-                }
-                log("Fabric yükleme başarısız, çıkış kodu: " + exitCode + ", Log: \n" + fabricInstallLog.toString());
-                Files.deleteIfExists(installerPath);
-                return false;
-            }
-
-            Files.deleteIfExists(installerPath);
-
-            if (!Files.exists(fabricJarPath) || !Files.exists(fabricJsonPath)) {
-                log("Fabric JAR veya JSON dosyası bulunamadı: JAR: " + fabricJarPath + ", JSON: " + fabricJsonPath);
-                return false;
-            }
-
-            // JSON dosyasını tekrar kontrol et
-            try (BufferedReader reader = Files.newBufferedReader(fabricJsonPath)) {
-                String jsonContent = reader.lines().collect(Collectors.joining());
-                if (jsonContent.trim().isEmpty()) {
-                    log("Fabric JSON dosyası boş: " + fabricJsonPath);
-                    return false;
-                }
-                try {
-                    new JSONObject(jsonContent);
-                    log("Fabric başarıyla yüklendi: " + fabricJsonPath);
-                    return true;
-                } catch (JSONException e) {
-                    log("Fabric JSON dosyası geçersiz: " + e.getMessage() + ", Dosya içeriği: " + jsonContent);
-                    return false;
-                }
-            } catch (IOException e) {
-                log("Fabric JSON dosyası okunamadı: " + e.getMessage());
-                return false;
-            }
-        } catch (Exception e) {
-            log("Fabric yükleme hatası: " + e.getMessage());
-            return false;
-        }
-    }
-
     private boolean downloadAssets() {
         if (minecraftVersionJson == null) {
-            if (!fetchMinecraftVersionJson()) {
-                return false;
-            }
+            return false;
         }
 
         try {
-            log("Resources indiriliyor...");
             JSONObject versionData = new JSONObject(minecraftVersionJson);
             JSONObject assetIndex = versionData.getJSONObject("assetIndex");
             String assetIndexUrl = assetIndex.getString("url");
             String assetIndexSha1 = assetIndex.getString("sha1");
 
-            java.nio.file.Path assetIndexPath = Paths.get(MINECRAFT_DIR, "assets", "indexes", MC_VERSION + ".json");
+            Path assetIndexPath = Paths.get(MINECRAFT_DIR, "assets", "indexes", MC_VERSION + ".json");
             Files.createDirectories(assetIndexPath.getParent());
 
             if (!Files.exists(assetIndexPath) || !verifyFileChecksum(assetIndexPath, assetIndexSha1)) {
@@ -1799,7 +1521,7 @@ public class Main extends Application {
                     JSONObject asset = objects.getJSONObject(key);
                     String hash = asset.getString("hash");
                     String hashPrefix = hash.substring(0, 2);
-                    java.nio.file.Path assetPath = Paths.get(MINECRAFT_DIR, "assets", "objects", hashPrefix, hash);
+                    Path assetPath = Paths.get(MINECRAFT_DIR, "assets", "objects", hashPrefix, hash);
                     Files.createDirectories(assetPath.getParent());
 
                     if (!Files.exists(assetPath) || !verifyFileChecksum(assetPath, hash)) {
@@ -1812,57 +1534,41 @@ public class Main extends Application {
                     }
 
                     downloadedAssets++;
-                    updateProgress(0.8 + (downloadedAssets * 0.1 / totalAssets));
-                    updateStatus("Resources indiriliyor: " + downloadedAssets + "/" + totalAssets);
+                    double progress = (double) downloadedAssets / totalAssets;
+                    updateProgress(0.8 + progress * 0.2);
                 }
             }
-            log("Resources başarıyla indirildi");
+
             return true;
         } catch (Exception e) {
-            log("Resources indirme hatası: " + e.getMessage());
+            log("Asset'ler indirilemedi: " + e.getMessage());
             return false;
         }
     }
 
-    private boolean verifyFileChecksum(java.nio.file.Path file, String expectedSha1) throws IOException {
+    private boolean verifyFileChecksum(Path file, String expectedSha1) {
         try {
-            MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
+            MessageDigest digest = MessageDigest.getInstance("SHA-1");
             try (InputStream fis = Files.newInputStream(file)) {
                 byte[] buffer = new byte[8192];
                 int bytesRead;
                 while ((bytesRead = fis.read(buffer)) != -1) {
-                    sha1.update(buffer, 0, bytesRead);
+                    digest.update(buffer, 0, bytesRead);
                 }
             }
-            byte[] hashBytes = sha1.digest();
-            StringBuilder computedSha1 = new StringBuilder();
-            for (byte b : hashBytes) {
-                computedSha1.append(String.format("%02x", b));
+            byte[] hashedBytes = digest.digest();
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hashedBytes) {
+                sb.append(String.format("%02x", b));
             }
-            boolean isValid = computedSha1.toString().equalsIgnoreCase(expectedSha1);
-            if (!isValid) {
-                log("Dosya doğrulama başarısız: " + file + ", Beklenen SHA1: " + expectedSha1 + ", Hesaplanan: " + computedSha1);
-            }
-            return isValid;
+            return sb.toString().equalsIgnoreCase(expectedSha1);
         } catch (Exception e) {
             log("Dosya doğrulama hatası: " + e.getMessage());
             return false;
         }
     }
 
-    private void initialize() {
-        // Oyun başlatılmadan önce gerekli son kontroller
-        try {
-            Files.createDirectories(Paths.get(MINECRAFT_DIR, "saves"));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR, "resourcepacks"));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR, "shaderpacks"));
-            log("Oyun dizinleri kontrol edildi ve oluşturuldu");
-        } catch (IOException e) {
-            log("Dizin oluşturma hatası: " + e.getMessage());
-            showError("Dizin oluşturma hatası: " + e.getMessage());
-        }
-    }
-
+    // Main game launch method
     private void launchGame() {
         if (isGameRunning.get()) {
             showError("Oyun zaten çalışıyor!");
@@ -1870,135 +1576,50 @@ public class Main extends Application {
         }
 
         String username = usernameField.getText().trim();
-        if (username.isEmpty() || username.length() < 3 || username.length() > 16 || !username.matches("[a-zA-Z0-9_]+")) {
-            showError("Geçersiz kullanıcı adı! 3-16 karakter arasında olmalı ve yalnızca harf, rakam veya alt çizgi içermeli.");
+        if (username.isEmpty()) {
+            showError("Lütfen geçerli bir kullanıcı adı girin!");
             return;
         }
 
-        Service<Void> launchService = new Service<>() {
+        playBtn.setDisable(true);
+        playBtn.setText("BAŞLATILIYOR...");
+
+        Service<Void> gameLauncher = new Service<>() {
             @Override
             protected Task<Void> createTask() {
                 return new Task<>() {
                     @Override
                     protected Void call() throws Exception {
+                        isGameRunning.set(true);
                         updateStatus("Oyun başlatılıyor...");
                         updateProgress(0.0);
-                        Platform.runLater(() -> playBtn.setDisable(true));
+                        log("Kullanıcı adı: " + username);
 
+                        // Prepare launch parameters
+                        String ram = ramComboBox.getValue() != null ? ramComboBox.getValue() : "4";
+                        String resolution = resolutionComboBox.getValue() != null ? resolutionComboBox.getValue() : "1280x720";
+                        boolean fullscreen = fullscreenCheck.isSelected();
+
+                        // Build Java command
                         List<String> command = new ArrayList<>();
-
-                        String javaPath = config.getProperty("javaPath", System.getProperty("java.home") + File.separator + "bin" + File.separator +
-                                (System.getProperty("os.name").toLowerCase().contains("win") ? "javaw.exe" : "java"));
-                        command.add(javaPath);
-
-                        // JVM arguments
-                        String ram = ramComboBox.getValue();
+                        command.add(getJavaPath());
                         command.add("-Xmx" + ram + "G");
                         command.add("-Xms" + ram + "G");
+
                         String jvmArgs = config.getProperty("jvmArgs", "");
                         if (!jvmArgs.isEmpty()) {
-                            command.addAll(Arrays.asList(jvmArgs.split(" ")));
+                            command.addAll(Arrays.asList(jvmArgs.split("\\s+")));
                         }
 
-                        // Native libraries
-                        command.add("-Djava.library.path=" + Paths.get(MINECRAFT_DIR, "natives").toString());
-
-                        // Classpath
-                        StringBuilder classpath = new StringBuilder();
-                        classpath.append(Paths.get(MINECRAFT_DIR, "versions", "fabric-loader-" + FABRIC_VERSION + "-" + MC_VERSION, "fabric-loader-" + FABRIC_VERSION + "-" + MC_VERSION + ".jar").toString());
-                        for (String libraryPath : minecraftLibraries.values()) {
-                            classpath.append(File.pathSeparator).append(libraryPath);
-                        }
+                        command.add("-Djava.library.path=" + Paths.get(MINECRAFT_DIR, "natives"));
                         command.add("-cp");
-                        command.add(classpath.toString());
+                        command.add(buildClasspath());
 
-                        // Main class
-                        java.nio.file.Path fabricJsonPath = Paths.get(MINECRAFT_DIR, "versions", "fabric-loader-" + FABRIC_VERSION + "-" + MC_VERSION, "fabric-loader-" + FABRIC_VERSION + "-" + MC_VERSION + ".json");
-                        String mainClass;
-                        try (BufferedReader reader = Files.newBufferedReader(fabricJsonPath)) {
-                            String jsonContent = reader.lines().collect(Collectors.joining());
-                            log("Fabric JSON içeriği: " + jsonContent); // JSON içeriğini logla
-                            JSONObject fabricJson = new JSONObject(jsonContent);
-                            mainClass = fabricJson.getString("mainClass");
-                        } catch (JSONException e) {
-                            log("Fabric JSON parse hatası: " + e.getMessage());
-                            throw new RuntimeException("Fabric yapılandırma dosyası bozuk: " + e.getMessage());
-                        }
+                        command.add("net.fabricmc.loader.impl.game.minecraft.MinecraftGameProvider");
+                        command.addAll(buildGameArguments(username, resolution, fullscreen));
 
-                        command.add(mainClass);
-
-                        // Game arguments
-                        command.add("--username");
-                        command.add(username);
-                        command.add("--version");
-                        command.add(MC_VERSION);
-                        command.add("--gameDir");
-                        command.add(MINECRAFT_DIR);
-                        command.add("--assetsDir");
-                        command.add(Paths.get(MINECRAFT_DIR, "assets").toString());
-                        command.add("--assetIndex");
-                        command.add(MC_VERSION);
-                        command.add("--accessToken");
-                        command.add("0"); // Offline mode
-                        command.add("--userType");
-                        command.add("mojang");
-
-                        if (fullscreenCheck.isSelected()) {
-                            command.add("--fullscreen");
-                        } else {
-                            String resolution = resolutionComboBox.getValue();
-                            String[] dimensions = resolution.split("x");
-                            command.add("--width");
-                            command.add(dimensions[0]);
-                            command.add("--height");
-                            command.add(dimensions[1]);
-                        }
-
-                        // Performance mode
-                        if (Boolean.parseBoolean(config.getProperty("performanceMode", "false"))) {
-                            command.add("--quickPlaySingleplayer");
-                            command.add("performance_mode_world");
-                        }
-
-                        log("Oyun başlatma komutu: " + String.join(" ", command));
-
-                        ProcessBuilder pb = new ProcessBuilder(command);
-                        pb.directory(new File(MINECRAFT_DIR));
-                        pb.redirectErrorStream(true);
-                        File logFile = new File(MINECRAFT_DIR, "game.log");
-                        pb.redirectOutput(ProcessBuilder.Redirect.to(logFile));
-
-                        Process process = pb.start();
-                        isGameRunning.set(true);
-
-                        // Oyun çalışırken pencereyi gizle
-                        Platform.runLater(() -> primaryStage.hide());
-
-                        // Oyun çıkışını izle
-                        int exitCode = process.waitFor();
-                        isGameRunning.set(false);
-
-                        Platform.runLater(() -> {
-                            primaryStage.show();
-                            playBtn.setDisable(false);
-                            updateStatus("Oyun kapatıldı");
-                            updateProgress(1.0);
-                            log("Oyun çıkış kodu: " + exitCode);
-                            if (exitCode != 0) {
-                                StringBuilder gameLog = new StringBuilder();
-                                try (BufferedReader reader = Files.newBufferedReader(logFile.toPath())) {
-                                    String line;
-                                    while ((line = reader.readLine()) != null) {
-                                        gameLog.append(line).append("\n");
-                                    }
-                                } catch (IOException e) {
-                                    log("Oyun logu okunamadı: " + e.getMessage());
-                                }
-                                log("Oyun logu: \n" + gameLog.toString());
-                                showError("Oyun beklenmedik bir şekilde kapandı. Çıkış kodu: " + exitCode);
-                            }
-                        });
-
+                        // Launch process
+                        launchMinecraftProcess(command);
                         return null;
                     }
 
@@ -2008,21 +1629,272 @@ public class Main extends Application {
             }
         };
 
-        launchService.setOnFailed(event -> {
+        gameLauncher.setOnSucceeded(e -> {
             isGameRunning.set(false);
-            Platform.runLater(() -> {
-                playBtn.setDisable(false);
-                primaryStage.show();
-                updateStatus("Oyun başlatılamadı");
-                updateProgress(0.0);
-                Throwable exception = launchService.getException();
-                String errorMsg = exception != null ? exception.getMessage() : "Bilinmeyen hata";
-                log("Oyun başlatma hatası: " + errorMsg);
-                showError("Oyun başlatılamadı: " + errorMsg);
-            });
+            updateUIAfterGameExit(true);
         });
 
-        launchService.start();
+        gameLauncher.setOnFailed(e -> {
+            isGameRunning.set(false);
+            Throwable ex = gameLauncher.getException();
+            log("Oyun başlatma hatası: " + (ex != null ? ex.getMessage() : "Bilinmeyen hata"));
+            updateUIAfterGameExit(false);
+        });
+
+        gameLauncher.start();
+    }
+
+    // Helper method to get Java path
+    private String getJavaPath() {
+        String customJavaPath = config.getProperty("javaPath");
+        if (customJavaPath != null && !customJavaPath.isEmpty() && Files.exists(Paths.get(customJavaPath))) {
+            return customJavaPath;
+        }
+        String defaultPath = System.getProperty("java.home") + File.separator + "bin" + File.separator +
+                (System.getProperty("os.name").toLowerCase().contains("win") ? "javaw.exe" : "java");
+        if (!Files.exists(Paths.get(defaultPath))) {
+            throw new IllegalStateException("Java executable not found: " + defaultPath);
+        }
+        return defaultPath;
+    }
+
+    // Helper method to build classpath
+    private String buildClasspath() {
+        StringBuilder classpath = new StringBuilder();
+        for (String libPath : minecraftLibraries.values()) {
+            classpath.append(libPath).append(File.pathSeparator);
+        }
+        classpath.append(Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".jar"));
+        classpath.append(File.pathSeparator);
+        classpath.append(Paths.get(MINECRAFT_DIR, "versions", MC_VERSION + "-fabric-" + FABRIC_VERSION, GAME_JAR));
+        return classpath.toString();
+    }
+
+    // Helper method to build game arguments
+    private List<String> buildGameArguments(String username, String resolution, boolean fullscreen) {
+        List<String> args = new ArrayList<>();
+        args.addAll(Arrays.asList(
+                "--username", username,
+                "--version", MC_VERSION,
+                "--gameDir", MINECRAFT_DIR,
+                "--assetsDir", Paths.get(MINECRAFT_DIR, "assets").toString(),
+                "--assetIndex", MC_VERSION,
+                "--uuid", UUID.randomUUID().toString().replace("-", ""),
+                "--accessToken", "0",
+                "--userType", "mojang",
+                "--versionType", "release"
+        ));
+
+        if (fullscreen) {
+            args.add("--fullscreen");
+        } else {
+            String[] res = resolution.split("x");
+            if (res.length == 2) {
+                args.add("--width");
+                args.add(res[0].trim());
+                args.add("--height");
+                args.add(res[1].trim());
+            }
+        }
+
+        // Add additional game arguments from config
+        if (Boolean.parseBoolean(config.getProperty("showFPS", "true"))) {
+            args.add("--showFPS");
+        }
+        if (Boolean.parseBoolean(config.getProperty("enableVBO", "true"))) {
+            args.add("--vbo");
+        }
+
+        // Add volume settings
+        args.add("--volume");
+        args.add(config.getProperty("masterVolume", "80"));
+        args.add("--musicVolume");
+        args.add(config.getProperty("musicVolume", "60"));
+
+        return args;
+    }
+
+    // Helper method to launch Minecraft process
+    private void launchMinecraftProcess(List<String> command) throws IOException, InterruptedException {
+        updateStatus("Minecraft başlatılıyor...");
+        log("Komut: " + String.join(" ", command));
+
+        ProcessBuilder pb = new ProcessBuilder(command);
+        pb.directory(new File(MINECRAFT_DIR));
+        pb.redirectErrorStream(true);
+
+        Process process = pb.start();
+
+        // Monitor process output
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                log("Minecraft: " + line);
+            }
+        }
+
+        // Wait for process to complete
+        int exitCode = process.waitFor();
+        log("Minecraft çıkış kodu: " + exitCode);
+
+        if (exitCode != 0) {
+            throw new IOException("Minecraft beklenmeyen bir şekilde kapandı, çıkış kodu: " + exitCode);
+        }
+
+        // Handle launcher behavior
+        if (!Boolean.parseBoolean(config.getProperty("keepLauncherOpen", "true"))) {
+            Platform.runLater(() -> {
+                saveConfig();
+                Platform.exit();
+                System.exit(0);
+            });
+        }
+    }
+
+    // Helper method to update UI after game exit
+    private void updateUIAfterGameExit(boolean success) {
+        Platform.runLater(() -> {
+            if (success) {
+                updateStatus("Oyun kapandı");
+                updateProgress(1.0);
+            } else {
+                updateStatus("Oyun başlatılamadı");
+                updateProgress(0.0);
+                showError("Oyun başlatılırken bir hata oluştu, lütfen logları kontrol edin.");
+            }
+            playBtn.setDisable(false);
+            playBtn.setText("OYNA");
+        });
+    }
+
+    //region Additional Utility Methods
+    private void initializeNativeLibraries() {
+        try {
+            updateStatus("Native kütüphaneler hazırlanıyor...");
+            Path nativesDir = Paths.get(MINECRAFT_DIR, "natives");
+            Files.createDirectories(nativesDir);
+
+            JSONObject versionJson = new JSONObject(minecraftVersionJson);
+            JSONArray libraries = versionJson.getJSONArray("libraries");
+            for (int i = 0; i < libraries.length(); i++) {
+                JSONObject library = libraries.getJSONObject(i);
+                if (library.has("downloads") && library.getJSONObject("downloads").has("classifiers")) {
+                    JSONObject classifiers = library.getJSONObject("downloads").getJSONObject("classifiers");
+                    if (classifiers.has("natives-windows")) {
+                        JSONObject nativeLib = classifiers.getJSONObject("natives-windows");
+                        String url = nativeLib.getString("url");
+                        String path = nativeLib.getString("path");
+                        String sha1 = nativeLib.getString("sha1");
+                        Path targetPath = nativesDir.resolve(path);
+
+                        if (!Files.exists(targetPath) || !verifyFileChecksum(targetPath, sha1)) {
+                            downloadFile(url, targetPath);
+                            if (!verifyFileChecksum(targetPath, sha1)) {
+                                log("Native kütüphane doğrulama hatası: " + path);
+                                continue;
+                            }
+                            // Extract native library
+                            extractZip(targetPath, nativesDir);
+                            Files.deleteIfExists(targetPath);
+                        }
+                    }
+                }
+            }
+            log("Native kütüphaneler hazırlandı");
+        } catch (Exception e) {
+            log("Native kütüphaneler hazırlanamadı: " + e.getMessage());
+        }
+    }
+
+    private void validateInstallation() {
+        try {
+            updateStatus("Kurulum doğrulanıyor...");
+            Path versionDir = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION);
+            Path fabricJar = Paths.get(MINECRAFT_DIR, "versions", GAME_JAR);
+            Path mcJar = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".jar");
+            Path versionJson = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".json");
+
+            if (!Files.exists(versionDir) || !Files.exists(fabricJar) || !Files.exists(mcJar) || !Files.exists(versionJson)) {
+                throw new IOException("Eksik kurulum dosyaları");
+            }
+
+            // Validate libraries
+            for (String libPath : minecraftLibraries.values()) {
+                if (!Files.exists(Paths.get(libPath))) {
+                    throw new IOException("Eksik kütüphane: " + libPath);
+                }
+            }
+
+            log("Kurulum doğrulandı");
+        } catch (Exception e) {
+            log("Kurulum doğrulama hatası: " + e.getMessage());
+            handleInstallationError("Kurulum doğrulama başarısız: " + e.getMessage());
+        }
+    }
+
+    private void repairInstallation() {
+        try {
+            updateStatus("Kurulum onarılıyor...");
+            // Delete corrupted directories
+            Path versionDir = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION);
+            Path nativesDir = Paths.get(MINECRAFT_DIR, "natives");
+            if (Files.exists(versionDir)) {
+                deleteDirectory(versionDir);
+            }
+            if (Files.exists(nativesDir)) {
+                deleteDirectory(nativesDir);
+            }
+
+            // Re-run installation
+            performGameInstallation();
+            log("Kurulum onarıldı");
+        } catch (Exception e) {
+            log("Kurulum onarma hatası: " + e.getMessage());
+            handleInstallationError("Kurulum onarılamadı: " + e.getMessage());
+        }
+    }
+    //endregion
+
+    //region Event Handlers
+    private void handleWindowResize() {
+        primaryStage.widthProperty().addListener((obs, oldVal, newVal) -> {
+            // Adjust UI components dynamically
+            double newWidth = newVal.doubleValue();
+            if (newsItemsContainer != null) {
+                newsItemsContainer.setPrefWidth(Math.max(200, newWidth * 0.25));
+            }
+        });
+
+        primaryStage.heightProperty().addListener((obs, oldVal, newVal) -> {
+            // Adjust console height
+            if (consoleArea != null) {
+                consoleArea.setPrefHeight(Math.max(100, newVal.doubleValue() * 0.2));
+            }
+        });
+    }
+
+    private void setupEventHandlers() {
+        // Handle window drag
+        final Delta dragDelta = new Delta();
+        root.setOnMousePressed(e -> {
+            dragDelta.x = primaryStage.getX() - e.getScreenX();
+            dragDelta.y = primaryStage.getY() - e.getScreenY();
+        });
+        root.setOnMouseDragged(e -> {
+            primaryStage.setX(e.getScreenX() + dragDelta.x);
+            primaryStage.setY(e.getScreenY() + dragDelta.y);
+        });
+
+        // Handle window resize events
+        handleWindowResize();
+
+        // Handle username validation
+        usernameField.textProperty().addListener((obs, oldVal, newVal) -> {
+            if (newVal.length() > 16 || newVal.contains(" ")) {
+                usernameField.setText(oldVal);
+                showError("Kullanıcı adı 16 karakterden uzun olamaz ve boşluk içeremez!");
+            }
+        });
     }
     //endregion
 }
