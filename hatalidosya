@@ -1,89 +1,86 @@
-package com.terramonic.launcher;
+package com.terramonic;
 
 import javafx.animation.*;
 import javafx.application.Application;
 import javafx.application.Platform;
-import javafx.concurrent.Service;
+import javafx.beans.property.SimpleDoubleProperty;
 import javafx.concurrent.Task;
 import javafx.geometry.*;
-import javafx.scene.*;
+import javafx.scene.Group;
+import javafx.scene.Node;
+import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.effect.*;
-import javafx.scene.image.*;
+import javafx.scene.image.Image;
+import javafx.scene.image.ImageView;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
-import javafx.scene.shape.Rectangle;
-import javafx.scene.text.*;
-import javafx.stage.*;
+import javafx.scene.paint.*;
+import javafx.scene.shape.*;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
+import javafx.scene.text.Text;
+import javafx.scene.text.TextAlignment;
+import javafx.scene.transform.Rotate;
+import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 import javafx.util.Duration;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.*;
-import java.net.*;
-import java.nio.channels.Channels;
-import java.nio.channels.FileChannel;
-import java.nio.channels.ReadableByteChannel;
+import java.lang.management.ManagementFactory;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.security.MessageDigest;
-import java.text.SimpleDateFormat;
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import javafx.application.Platform;
+import javafx.stage.Stage;
+
+import static java.lang.Long.toHexString;
 
 public class Main extends Application {
-
     // Constants
-    private static final String APP_NAME = "TerraMonic";
-    private static final String APP_DATA = System.getenv("APPDATA") + "/.terramonic";
-    private static final String MC_VERSION = "1.21.4";
-    private static final String FABRIC_VERSION = "0.16.14";
-    private static final String GAME_JAR = "fabric-loader-" + FABRIC_VERSION + "-" + MC_VERSION + ".jar";
-    private static final String MINECRAFT_DIR = APP_DATA;
-    private static final String VERSION_JSON = "https://www.dropbox.com/scl/fi/u7aebmab7drw6syltdw9u/version.json?rlkey=u2ferprl7izcsa3c6we24blxc&st=gvli5gjt&dl=1";
-    private static final String ICON_URL = "https://www.dropbox.com/scl/fi/2yc75kqokrtivw202rt3w/icon.png?rlkey=1blmy791i17gs6t78ecjc3qxf&st=3gb5vyf1&dl=1";
-    private static final String MINECRAFT_MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
-    private static final String FABRIC_INSTALLER_URL = "https://maven.fabricmc.net/net/fabricmc/fabric-installer/0.11.2/fabric-installer-0.11.2.jar";
+    private static final String VERSION_URL = "https://www.dropbox.com/scl/fi/bf507zy3c5adp9lyl6iye/version.txt?rlkey=9cd0ky00a1okgbf9w3jqizgxh&st=z1tdmze9&dl=1";
+    private static final String ICON_URL = "https://www.dropbox.com/scl/fi/2yc75kqokrtivw202rt3w/icon.png?rlkey=1blmy791i17gs6t78ecjc3qxf&st=3qbijg3k&dl=1";
+    private static final String FABRIC_INSTALLER_URL = "https://maven.fabricmc.net/net/fabricmc/fabric-installer/1.0.3/fabric-installer-1.0.3.jar";
+    private static final String MINECRAFT_VERSION = "1.21.4";
+    private static final String FABRIC_VERSION = "0.16.13";
+    private static final String TERRAMONIC_DIR = System.getenv("APPDATA") + File.separator + ".terramonic";
 
-    // Colors (Green-themed palette)
-    private static final Color PRIMARY_COLOR = Color.web("#2ecc71"); // Bright green
-    private static final Color PRIMARY_COLOR_DARK = Color.web("#27ae60"); // Darker green
-    private static final Color SECONDARY_COLOR = Color.web("#1abc9c"); // Teal-green
-    private static final Color ACCENT_COLOR = Color.web("#16a085"); // Deep green
-    private static final Color ERROR_COLOR = Color.web("#e74c3c");
-    private static final Color WARNING_COLOR = Color.web("#f39c12");
-    private static final Color BG_DARK = Color.web("#0f0f1a");
-    private static final Color BG_DARKER = Color.web("#080812");
-    private static final Color TEXT_COLOR = Color.web("#ecf0f1");
+    // Theme colors
+    private static final Color PRIMARY_COLOR = Color.rgb(45, 200, 110);
+    private static final Color SECONDARY_COLOR = Color.rgb(30, 150, 80);
+    private static final Color ACCENT_COLOR = Color.rgb(220, 255, 220);
+    private static final Color DARK_BG = Color.rgb(20, 20, 20);
+    private static final Color MID_BG = Color.rgb(30, 30, 30);
+    private static final Color LIGHT_BG = Color.rgb(40, 40, 40);
 
-    // UI Components
-    private StackPane root;
-    private Stage primaryStage;
-    private TextField usernameField;
-    private ImageView playerHead;
-    private ProgressBar progressBar;
+    // App State
+    private Stage mainStage;
+    private double xOffset, yOffset;
+    private Scene splashScene, loginScene, mainScene;
+    private BorderPane splashRoot, loginRoot, mainRoot;
     private Label statusLabel;
-    private TextArea consoleArea;
-    private ComboBox<String> ramComboBox;
-    private CheckBox fullscreenCheck;
-    private ComboBox<String> resolutionComboBox;
-    private Button playBtn;
-    private AtomicBoolean isGameRunning = new AtomicBoolean(false);
-    private VBox newsItemsContainer;
-
-    // Data
+    private ProgressBar progressBar;
+    private String username = "";
+    private String launcherVersion = "1.0.0";
     private JSONObject versionData;
-    private String currentVersion = "1.0.0";
-    private Properties config;
-    private ExecutorService executorService;
-    private boolean offlineMode = false;
-    private String minecraftVersionJson;
-    private final Map<String, String> minecraftLibraries = new HashMap<>();
+    private ExecutorService executor = Executors.newCachedThreadPool();
+    private boolean maintenanceMode = false;
+    private ImageView playerHead;
+    private SimpleDoubleProperty allocatedRam = new SimpleDoubleProperty(2048);
+    private boolean fullscreenMode = false;
+    private Text newsText;
+    private Label downloadStatusLabel;
+    private ParallelTransition pulseAnimation;
 
     public static void main(String[] args) {
         launch(args);
@@ -92,1809 +89,1559 @@ public class Main extends Application {
     @Override
     public void start(Stage primaryStage) {
         try {
-            this.primaryStage = primaryStage;
-            executorService = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+            mainStage = primaryStage;
+            mainStage.initStyle(StageStyle.UNDECORATED);
+            mainStage.setTitle("TerraMonic Launcher");
 
-            // Initialize newsItemsContainer early
-            newsItemsContainer = new VBox(15);
-            newsItemsContainer.setAlignment(Pos.TOP_LEFT);
-            newsItemsContainer.setPadding(new Insets(5));
+            // Set up directories
+            setupDirectories();
 
-            loadConfig();
-            setupStage();
-            setupInternalStylesheet();
-            showSplashScreen();
+            // Create scenes
+            createSplashScene();
+            createLoginScene();
+            createMainScene();
 
-            createAppDataFolder();
+            // Show splash screen with animation
+            mainStage.setScene(splashScene);
+            mainStage.show();
 
-            PauseTransition pause = new PauseTransition(Duration.seconds(0.5));
-            pause.setOnFinished(e -> checkForUpdates());
-            pause.play();
-
-            primaryStage.show();
+            // Start initialization process
+            initialize();
         } catch (Exception e) {
-            e.printStackTrace();
-            showError("Launcher başlatma hatası: " + e.getMessage());
+            showError("Initialization Error", e);
         }
     }
 
-    @Override
-    public void stop() {
-        saveConfig();
-        executorService.shutdown();
-        Platform.exit();
-        System.exit(0);
+    private void setupDirectories() throws IOException {
+        Files.createDirectories(Paths.get(TERRAMONIC_DIR));
     }
 
-    //region Configuration Management
-    private void loadConfig() {
-        config = new Properties();
-        Path configFile = Paths.get(APP_DATA + "/launcher.properties");
-        try {
-            if (Files.exists(configFile)) {
-                try (FileInputStream fis = new FileInputStream(configFile.toFile())) {
-                    config.load(fis);
-                }
-            } else {
-                config.setProperty("ram", "4");
-                config.setProperty("username", "Player_" + new Random().nextInt(1000));
-                config.setProperty("resolution", "1280x720");
-                config.setProperty("fullscreen", "false");
-                config.setProperty("javaPath", System.getProperty("java.home") + File.separator + "bin" + File.separator +
-                        (System.getProperty("os.name").toLowerCase().contains("win") ? "javaw.exe" : "java"));
-                config.setProperty("keepLauncherOpen", "true");
-                config.setProperty("showFPS", "true");
-                config.setProperty("enableVBO", "true");
-                config.setProperty("jvmArgs", "-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200");
-                config.setProperty("masterVolume", "80");
-                config.setProperty("musicVolume", "60");
-            }
-        } catch (IOException e) {
-            log("Konfigürasyon dosyası yüklenemedi: " + e.getMessage());
+    private void addDragListeners() {
+        mainStage.getScene().setOnMousePressed(event -> {
+            xOffset = event.getSceneX();
+            yOffset = event.getSceneY();
+        });
+
+        mainStage.getScene().setOnMouseDragged(event -> {
+            mainStage.setX(event.getScreenX() - xOffset);
+            mainStage.setY(event.getScreenY() - yOffset);
+        });
+    }
+
+
+    private void createSplashScene() {
+        splashRoot = new BorderPane();
+        splashRoot.setStyle("-fx-background-color: linear-gradient(to right, #0a0a0a, #1a1a1a, #0a0a0a);");
+
+        // Ana container (daha geniş yatay düzen)
+        HBox mainContainer = new HBox(30);
+        mainContainer.setAlignment(Pos.CENTER);
+        mainContainer.setPadding(new Insets(30));
+        mainContainer.setStyle("-fx-background-radius: 10;");
+
+        // Sol taraf - Logo ve animasyonlu çerçeve
+        StackPane logoContainer = new StackPane();
+        logoContainer.setMinSize(100, 100);
+
+        // Animasyonlu border
+        Rectangle animatedBorder = new Rectangle(90, 90);
+        animatedBorder.setFill(Color.TRANSPARENT);
+        animatedBorder.setStroke(PRIMARY_COLOR);
+        animatedBorder.setStrokeWidth(2);
+        animatedBorder.setStrokeDashOffset(10);
+
+        // Dash animasyonu
+        Timeline borderAnimation = new Timeline(
+                new KeyFrame(Duration.ZERO,
+                        new KeyValue(animatedBorder.strokeDashOffsetProperty(), 10),
+                        new KeyValue(animatedBorder.opacityProperty(), 0.7)
+                ),
+                new KeyFrame(Duration.seconds(2),
+                        new KeyValue(animatedBorder.strokeDashOffsetProperty(), 0),
+                        new KeyValue(animatedBorder.opacityProperty(), 1.0)
+                )
+        );
+        borderAnimation.setCycleCount(Timeline.INDEFINITE);
+        borderAnimation.setAutoReverse(true);
+
+        // Logo (TM yazısı)
+        Text logoText = new Text("TM");
+        logoText.setFill(PRIMARY_COLOR);
+        logoText.setFont(Font.font("Verdana", FontWeight.BOLD, 48));
+        logoText.setEffect(new Glow(0.8));
+        logoText.setId("terramonicLogo");
+
+        logoContainer.getChildren().addAll(animatedBorder, logoText);
+        borderAnimation.play();
+
+        // Sağ taraf - Metin ve progress bar
+        VBox textContainer = new VBox(15);
+        textContainer.setAlignment(Pos.CENTER_LEFT);
+        textContainer.setMinWidth(300);
+
+        // TerraMonic yazısı
+        Text titleText = new Text("TERRAMONIC");
+        titleText.setFill(Color.WHITE);
+        titleText.setFont(Font.font("Verdana", FontWeight.BOLD, 28));
+        titleText.setEffect(new DropShadow(5, PRIMARY_COLOR));
+
+        // Alt başlık
+        Text subtitleText = new Text("Premium Minecraft Experience");
+        subtitleText.setFill(Color.LIGHTGRAY);
+        subtitleText.setFont(Font.font("Verdana", 14));
+
+        // Progress bar container
+        StackPane progressContainer = new StackPane();
+        progressContainer.setPrefHeight(8);
+
+        // Progress bar arkaplan
+        Rectangle progressBg = new Rectangle(300, 8);
+        progressBg.setFill(Color.rgb(50, 50, 50));
+        progressBg.setArcHeight(8);
+        progressBg.setArcWidth(8);
+
+        // Progress bar
+        progressBar = new ProgressBar(0);
+        progressBar.setPrefWidth(300);
+        progressBar.setPrefHeight(8);
+        progressBar.setStyle("-fx-accent: " + toHexString(PRIMARY_COLOR) + ";");
+
+        // Glow efekti
+        progressBar.setEffect(new Glow(0.5));
+
+        progressContainer.getChildren().addAll(progressBg, progressBar);
+
+        // Status label (görünmez)
+        statusLabel = new Label("Initializing...");
+        statusLabel.setTextFill(Color.TRANSPARENT);
+
+        textContainer.getChildren().addAll(titleText, subtitleText, progressContainer, statusLabel);
+
+        // Tüm elemanları birleştir
+        mainContainer.getChildren().addAll(logoContainer, textContainer);
+        splashRoot.setCenter(mainContainer);
+
+        // Sahne ayarları
+        splashScene = new Scene(splashRoot, 500, 200); // Geniş yatay dikdörtgen
+        splashScene.setFill(Color.TRANSPARENT);
+
+        // Logo animasyonunu başlat
+        startLogoAnimation();
+    }
+
+    private void startLogoAnimation() {
+        if (pulseAnimation != null) {
+            pulseAnimation.stop();
+        }
+
+        Node logo = splashRoot.lookup("#terramonicLogo");
+        if (logo != null) {
+            // 3D rotate efekti
+            RotateTransition rotate = new RotateTransition(Duration.seconds(8), logo);
+            rotate.setFromAngle(-5);
+            rotate.setToAngle(5);
+            rotate.setAxis(Rotate.Y_AXIS);
+            rotate.setCycleCount(Animation.INDEFINITE);
+            rotate.setInterpolator(Interpolator.EASE_BOTH);
+            rotate.setAutoReverse(true);
+
+            // Glow animasyonu
+            Glow glow = new Glow(0.5);
+            logo.setEffect(glow);
+
+            Timeline glowTimeline = new Timeline(
+                    new KeyFrame(Duration.ZERO, new KeyValue(glow.levelProperty(), 0.5)),
+                    new KeyFrame(Duration.seconds(1.5), new KeyValue(glow.levelProperty(), 1.2)),
+                    new KeyFrame(Duration.seconds(3), new KeyValue(glow.levelProperty(), 0.5))
+            );
+            glowTimeline.setCycleCount(Animation.INDEFINITE);
+
+            // Rotate ve glow animasyonlarını birleştir
+            ParallelTransition parallelTransition = new ParallelTransition(rotate, glowTimeline);
+            pulseAnimation = parallelTransition; // pulseAnimation ParallelTransition tipinde olmalı
+            pulseAnimation.play();
         }
     }
 
-    private void saveConfig() {
-        try {
-            Path configFile = Paths.get(APP_DATA + "/launcher.properties");
-            try (FileOutputStream fos = new FileOutputStream(configFile.toFile())) {
-                config.store(fos, "TerraMonic Launcher Config");
-            }
-        } catch (IOException e) {
-            log("Konfigürasyon dosyası kaydedilemedi: " + e.getMessage());
-        }
-    }
-    //endregion
-
-    //region UI Setup
-    private void setupStage() {
-        primaryStage.setTitle(APP_NAME + " Launcher");
-
-        try {
-            Image iconImage = new Image(ICON_URL, 256, 256, true, true);
-            primaryStage.getIcons().add(iconImage);
-        } catch (Exception e) {
-            log("İkon yüklenemedi: " + e.getMessage());
-        }
-
-        root = new StackPane();
-        root.setStyle("-fx-background-color: " + toRGBCode(BG_DARKER) + ";");
-
-        Scene scene = new Scene(root, 1280, 720);
-
-        primaryStage.initStyle(StageStyle.UNDECORATED);
-
-        primaryStage.setMinWidth(1024);
-        primaryStage.setMinHeight(600);
-
-        primaryStage.setScene(scene);
-
-        Rectangle2D screenBounds = Screen.getPrimary().getVisualBounds();
-        primaryStage.setX((screenBounds.getWidth() - 1280) / 2);
-        primaryStage.setY((screenBounds.getHeight() - 720) / 2);
+    private String toHexString(Color color) {
+        int r = (int) (color.getRed() * 255);
+        int g = (int) (color.getGreen() * 255);
+        int b = (int) (color.getBlue() * 255);
+        return String.format("#%02X%02X%02X", r, g, b);
     }
 
-    private void setupInternalStylesheet() {
-        String styleSheet =
-                ".root { -fx-font-family: 'Segoe UI', 'Arial', sans-serif; }" +
-                        ".panel { -fx-background-radius: 8px; -fx-border-radius: 8px; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.4), 10, 0, 0, 0); }" +
-                        ".separator { -fx-background-color: #444; -fx-opacity: 0.7; }" +
-                        ".text-field { -fx-background-color: rgba(0,0,0,0.3); -fx-text-fill: white; -fx-prompt-text-fill: #aaa; -fx-background-radius: 4px; -fx-padding: 8 12; -fx-highlight-fill: " + toRGBCode(PRIMARY_COLOR) + "; }" +
-                        ".text-field:focused { -fx-background-color: rgba(0,0,0,0.5); -fx-border-color: " + toRGBCode(PRIMARY_COLOR) + "; -fx-border-width: 1px; -fx-border-radius: 4px; }" +
-                        ".button { -fx-background-color: rgba(0,0,0,0.3); -fx-text-fill: white; -fx-background-radius: 4px; -fx-padding: 8 15; -fx-cursor: hand; }" +
-                        ".button:hover { -fx-background-color: rgba(0,0,0,0.5); }" +
-                        ".button:pressed { -fx-background-color: rgba(0,0,0,0.7); }" +
-                        ".play-button { -fx-background-color: linear-gradient(to bottom, " + toRGBCode(PRIMARY_COLOR) + ", " + toRGBCode(PRIMARY_COLOR_DARK) + "); -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 16px; -fx-background-radius: 4px; -fx-padding: 10 30; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.3), 5, 0, 0, 0); -fx-cursor: hand; }" +
-                        ".play-button:hover { -fx-background-color: linear-gradient(to bottom, " + toRGBCode(PRIMARY_COLOR) + ", " + toRGBCode(PRIMARY_COLOR) + "); -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 8, 0, 0, 0); }" +
-                        ".play-button:pressed { -fx-background-color: " + toRGBCode(PRIMARY_COLOR_DARK) + "; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.2), 3, 0, 0, 0); }" +
-                        ".play-button:disabled { -fx-background-color: #555555; -fx-opacity: 0.7; }" +
-                        ".secondary-button { -fx-background-color: linear-gradient(to bottom, " + toRGBCode(SECONDARY_COLOR) + ", " + toRGBCode(SECONDARY_COLOR.darker()) + "); -fx-text-fill: white; -fx-font-weight: bold; -fx-background-radius: 4px; -fx-padding: 8 20; -fx-cursor: hand; }" +
-                        ".secondary-button:hover { -fx-background-color: " + toRGBCode(SECONDARY_COLOR) + "; }" +
-                        ".secondary-button:pressed { -fx-background-color: " + toRGBCode(SECONDARY_COLOR.darker()) + "; }" +
-                        ".small-button { -fx-background-color: rgba(0,0,0,0.3); -fx-text-fill: white; -fx-background-radius: 4px; -fx-padding: 8 10; -fx-cursor: hand; }" +
-                        ".small-button:hover { -fx-background-color: rgba(0,0,0,0.5); }" +
-                        ".small-button:pressed { -fx-background-color: rgba(0,0,0,0.7); }" +
-                        ".window-button { -fx-background-color: transparent; -fx-text-fill: white; -fx-background-radius: 0; -fx-padding: 5 10; -fx-cursor: hand; }" +
-                        ".window-button:hover { -fx-background-color: rgba(255,255,255,0.1); }" +
-                        ".window-button:pressed { -fx-background-color: rgba(255,255,255,0.2); }" +
-                        ".window-button-close { -fx-background-color: transparent; -fx-text-fill: white; -fx-background-radius: 0; -fx-padding: 5 10; -fx-cursor: hand; }" +
-                        ".window-button-close:hover { -fx-background-color: #e81123; }" +
-                        ".window-button-close:pressed { -fx-background-color: #f1707a; }" +
-                        ".progress-bar { -fx-accent: " + toRGBCode(PRIMARY_COLOR) + "; }" +
-                        ".progress-bar > .track { -fx-background-color: rgba(0,0,0,0.3); -fx-background-radius: 4px; }" +
-                        ".progress-bar > .bar { -fx-background-radius: 4px; -fx-background-insets: 0; }" +
-                        ".combo-box { -fx-background-color: rgba(0,0,0,0.3); -fx-text-fill: white; -fx-background-radius: 4px; -fx-padding: 2; -fx-cursor: hand; }" +
-                        ".combo-box:hover { -fx-background-color: rgba(0,0,0,0.5); }" +
-                        ".combo-box:showing { -fx-background-color: rgba(0,0,0,0.6); }" +
-                        ".combo-box .list-cell { -fx-text-fill: white; -fx-background-color: transparent; -fx-padding: 6 10; }" +
-                        ".combo-box .list-view { -fx-background-color: #333; -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.6), 8, 0, 0, 0); }" +
-                        ".combo-box .list-view .list-cell { -fx-background-color: transparent; }" +
-                        ".combo-box .list-view .list-cell:hover { -fx-background-color: rgba(0,0,0,0.3); }" +
-                        ".combo-box .list-view .list-cell:selected { -fx-background-color: " + toRGBCode(PRIMARY_COLOR) + "; }" +
-                        ".check-box { -fx-text-fill: white; }" +
-                        ".check-box .box { -fx-background-color: rgba(0,0,0,0.3); -fx-border-color: #777; -fx-border-radius: 3px; }" +
-                        ".check-box:selected .mark { -fx-background-color: white; }" +
-                        ".check-box:selected .box { -fx-background-color: " + toRGBCode(PRIMARY_COLOR) + "; -fx-border-color: " + toRGBCode(PRIMARY_COLOR) + "; }" +
-                        ".slider .track { -fx-background-color: rgba(0,0,0,0.3); }" +
-                        ".slider .thumb { -fx-background-color: " + toRGBCode(PRIMARY_COLOR) + "; }" +
-                        ".console { -fx-font-family: 'Consolas', 'Courier New', monospace; -fx-background-color: rgba(0,0,0,0.3); -fx-text-fill: " + toRGBCode(PRIMARY_COLOR) + "; -fx-highlight-fill: #666; }" +
-                        ".info-box { -fx-background-color: rgba(0,0,0,0.3); -fx-background-radius: 6px; -fx-border-radius: 6px; }" +
-                        ".news-item { -fx-background-color: rgba(0,0,0,0.2); -fx-background-radius: 5px; -fx-border-radius: 5px; -fx-padding: 10; }" +
-                        ".news-item:hover { -fx-background-color: rgba(0,0,0,0.3); }" +
-                        ".scroll-pane { -fx-background: transparent; -fx-background-color: transparent; }" +
-                        ".scroll-pane > .viewport { -fx-background-color: transparent; }" +
-                        ".scroll-pane > .scroll-bar { -fx-background-color: rgba(0,0,0,0.2); -fx-background-radius: 5; }" +
-                        ".scroll-pane > .scroll-bar > .thumb { -fx-background-color: rgba(255,255,255,0.3); -fx-background-radius: 5; }" +
-                        ".scroll-pane > .scroll-bar > .thumb:hover { -fx-background-color: rgba(255,255,255,0.4); }" +
-                        ".scroll-pane > .scroll-bar > .thumb:pressed { -fx-background-color: rgba(255,255,255,0.5); }" +
-                        ".scroll-pane > .corner { -fx-background-color: transparent; }" +
-                        ".tab-pane > .tab-header-area > .headers-region > .tab { -fx-background-color: rgba(0,0,0,0.3); -fx-background-radius: 4 4 0 0; }" +
-                        ".tab-pane > .tab-header-area > .headers-region > .tab:selected { -fx-background-color: rgba(0,0,0,0.5); }" +
-                        ".tab-pane > .tab-header-area > .headers-region > .tab > .tab-container > .tab-label { -fx-text-fill: white; }";
 
-        try {
-            File tempCss = File.createTempFile("terramonic", ".css");
-            try (FileWriter writer = new FileWriter(tempCss)) {
-                writer.write(styleSheet);
-            }
-            tempCss.deleteOnExit();
-            root.getScene().getStylesheets().add(tempCss.toURI().toURL().toExternalForm());
-        } catch (IOException e) {
-            log("Stil dosyası oluşturulamadı: " + e.getMessage());
-        }
-    }
-
-    private void showSplashScreen() {
-        StackPane splash = new StackPane();
-        splash.setStyle("-fx-background-color: linear-gradient(to bottom, " + toRGBCode(BG_DARKER) + ", " + toRGBCode(BG_DARK) + ");");
-        splash.setEffect(new DropShadow(20, Color.BLACK));
-
-        VBox content = new VBox(20);
-        content.setAlignment(Pos.CENTER);
-        content.setPadding(new Insets(20));
-
-        ImageView logo = new ImageView();
-        try {
-            Image logoImage = new Image(ICON_URL, 140, 140, true, true);
-            logo.setImage(logoImage);
-            logo.setFitWidth(140);
-            logo.setFitHeight(140);
-            logo.setEffect(new DropShadow(10, PRIMARY_COLOR_DARK));
-        } catch (Exception e) {
-            log("Logo yüklenemedi: " + e.getMessage());
-            Rectangle fallback = new Rectangle(140, 140, PRIMARY_COLOR);
-            fallback.setArcWidth(20);
-            fallback.setArcHeight(20);
-            content.getChildren().add(fallback);
-        }
-
-        Label title = new Label(APP_NAME);
-        title.setFont(Font.font("Arial", FontWeight.BOLD, 42));
-        title.setTextFill(PRIMARY_COLOR);
-        title.setEffect(new DropShadow(10, PRIMARY_COLOR_DARK));
-
-        progressBar = new ProgressBar(0.0);
-        progressBar.setPrefWidth(400);
-        progressBar.setStyle("-fx-accent: " + toRGBCode(PRIMARY_COLOR) + ";");
-
-        statusLabel = new Label("Yükleniyor...");
-        statusLabel.setTextFill(TEXT_COLOR);
-        statusLabel.setFont(Font.font("Arial", 14));
-
-        Label versionLabel = new Label("v" + currentVersion);
-        versionLabel.setTextFill(TEXT_COLOR);
-        versionLabel.setFont(Font.font("Arial", 14));
-
-        content.getChildren().addAll(logo, title, progressBar, statusLabel, versionLabel);
-        splash.getChildren().add(content);
-        root.getChildren().add(splash);
-    }
-    //endregion
-
-    //region Main UI Components
-    private void showMainUI() {
-        FadeTransition fadeOut = new FadeTransition(Duration.millis(300), root.getChildren().get(0));
-        fadeOut.setFromValue(1.0);
-        fadeOut.setToValue(0.0);
-        fadeOut.setOnFinished(e -> {
-            root.getChildren().clear();
-
-            BorderPane mainContainer = createMainUIContainer();
-            root.getChildren().add(mainContainer);
-
-            FadeTransition fadeIn = new FadeTransition(Duration.millis(500), mainContainer);
-            fadeIn.setFromValue(0.0);
-            fadeIn.setToValue(1.0);
-            fadeIn.play();
-
-            String savedUsername = config.getProperty("username", "");
-            usernameField.setText(savedUsername);
-            updatePlayerHead(savedUsername);
-
-            checkGameInstallation();
-        });
-        fadeOut.play();
-    }
-
-    private BorderPane createMainUIContainer() {
-        BorderPane mainContainer = new BorderPane();
-        mainContainer.setStyle("-fx-background-color: linear-gradient(to bottom, " + toRGBCode(BG_DARKER) + ", " + toRGBCode(BG_DARK) + ");");
-
-        HBox titleBar = createTitleBar();
-        mainContainer.setTop(titleBar);
-
-        BorderPane contentPane = new BorderPane();
-        contentPane.setPadding(new Insets(20));
-
-        VBox playerSection = createPlayerSection();
-        contentPane.setLeft(playerSection);
-
-        VBox settingsSection = createSettingsSection();
-        contentPane.setCenter(settingsSection);
-
-        VBox newsSection = createNewsSection();
-        contentPane.setRight(newsSection);
-
-        mainContainer.setCenter(contentPane);
-
-        HBox footer = createFooter();
-        mainContainer.setBottom(footer);
-
-        return mainContainer;
-    }
-
-    private HBox createTitleBar() {
-        HBox titleBar = new HBox();
-        titleBar.setAlignment(Pos.CENTER_LEFT);
-        titleBar.setPadding(new Insets(10, 15, 10, 15));
-        titleBar.setStyle("-fx-background-color: " + toRGBCode(BG_DARKER) + ";");
-
-        ImageView logo = new ImageView();
-        try {
-            Image logoImage = new Image(ICON_URL, 24, 24, true, true);
-            logo.setImage(logoImage);
-            logo.setFitWidth(24);
-            logo.setFitHeight(24);
-        } catch (Exception e) {
-            log("Başlık logosu yüklenemedi: " + e.getMessage());
-            Rectangle replacementIcon = new Rectangle(24, 24, PRIMARY_COLOR);
-            replacementIcon.setArcWidth(6);
-            replacementIcon.setArcHeight(6);
-            StackPane iconContainer = new StackPane(replacementIcon);
-            titleBar.getChildren().add(iconContainer);
-        }
-
-        Label title = new Label(APP_NAME.toUpperCase());
-        title.setFont(Font.font("Arial", FontWeight.BOLD, 16));
-        title.setTextFill(PRIMARY_COLOR);
-        title.setPadding(new Insets(0, 0, 0, 10));
-
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
-        HBox controlButtons = new HBox(10);
-
-        Button minimizeBtn = new Button("_");
-        minimizeBtn.getStyleClass().add("window-button");
-        minimizeBtn.setOnAction(e -> primaryStage.setIconified(true));
-
-        Button maximizeBtn = new Button("□");
-        maximizeBtn.getStyleClass().add("window-button");
-        maximizeBtn.setOnAction(e -> {
-            if (primaryStage.isMaximized()) {
-                primaryStage.setMaximized(false);
-                maximizeBtn.setText("□");
-            } else {
-                primaryStage.setMaximized(true);
-                maximizeBtn.setText("❐");
-            }
-        });
-
-        Button closeBtn = new Button("X");
-        closeBtn.getStyleClass().add("window-button-close");
-        closeBtn.setOnAction(e -> {
-            saveConfig();
-            Platform.exit();
-            System.exit(0);
-        });
-
-        controlButtons.getChildren().addAll(minimizeBtn, maximizeBtn, closeBtn);
-
-        if (logo.getImage() != null) {
-            titleBar.getChildren().addAll(logo, title, spacer, controlButtons);
-        } else {
-            titleBar.getChildren().addAll(title, spacer, controlButtons);
-        }
-
-        final Delta dragDelta = new Delta();
-        titleBar.setOnMousePressed(e -> {
-            dragDelta.x = primaryStage.getX() - e.getScreenX();
-            dragDelta.y = primaryStage.getY() - e.getScreenY();
-        });
-        titleBar.setOnMouseDragged(e -> {
-            primaryStage.setX(e.getScreenX() + dragDelta.x);
-            primaryStage.setY(e.getScreenY() + dragDelta.y);
-        });
-
-        titleBar.setOnMouseClicked(e -> {
-            if (e.getClickCount() == 2) {
-                if (primaryStage.isMaximized()) {
-                    primaryStage.setMaximized(false);
-                    maximizeBtn.setText("□");
-                } else {
-                    primaryStage.setMaximized(true);
-                    maximizeBtn.setText("❐");
-                }
-            }
-        });
-
-        return titleBar;
-    }
-
-    private static class Delta {
-        double x, y;
-    }
-
-    private VBox createPlayerSection() {
-        VBox playerSection = new VBox(15);
-        playerSection.setAlignment(Pos.TOP_LEFT);
-        playerSection.setPadding(new Insets(20));
-        playerSection.setMaxWidth(300);
-        playerSection.getStyleClass().add("panel");
-        playerSection.setStyle("-fx-background-color: rgba(0, 0, 0, 0.3);");
-
-        Label playerLabel = new Label("Oyuncu");
-        playerLabel.setFont(Font.font("Arial", FontWeight.BOLD, 18));
-        playerLabel.setTextFill(TEXT_COLOR);
-
-        HBox playerBox = new HBox(15);
-        playerBox.setAlignment(Pos.CENTER_LEFT);
-
-        playerHead = new ImageView();
-        playerHead.setFitWidth(60);
-        playerHead.setFitHeight(60);
-        playerHead.setEffect(new DropShadow(10, Color.BLACK));
-
-        Rectangle defaultHead = new Rectangle(60, 60, Color.rgb(60, 60, 60));
-        playerHead.setImage(new WritableImage(60, 60));
-
-        VBox playerInfoBox = new VBox(10);
-        playerInfoBox.setAlignment(Pos.CENTER_LEFT);
-
-        usernameField = new TextField();
-        usernameField.setPromptText("Kullanıcı Adı");
-        usernameField.setPrefWidth(180);
-        usernameField.textProperty().addListener((obs, oldVal, newVal) -> {
-            config.setProperty("username", newVal);
-            updatePlayerHead(newVal);
-        });
-
-        Button logoutBtn = new Button("Çıkış");
-        logoutBtn.getStyleClass().add("small-button");
-        logoutBtn.setVisible(false);
-
-        playerInfoBox.getChildren().addAll(usernameField, logoutBtn);
-        playerBox.getChildren().addAll(playerHead, playerInfoBox);
-
-        playBtn = new Button("OYNA");
-        playBtn.getStyleClass().add("play-button");
-        playBtn.setMaxWidth(Double.MAX_VALUE);
-        playBtn.setPrefHeight(50);
-        playBtn.setDisable(true);
-
-        playBtn.setOnAction(e -> launchGame());
-
-        Label consoleLabel = new Label("Konsol");
-        consoleLabel.setFont(Font.font("Arial", FontWeight.BOLD, 14));
-        consoleLabel.setTextFill(TEXT_COLOR);
-
-        consoleArea = new TextArea();
-        consoleArea.getStyleClass().add("console");
-        consoleArea.setEditable(false);
-        consoleArea.setPrefHeight(150);
-        consoleArea.setWrapText(true);
-
-        playerSection.getChildren().addAll(playerLabel, new Separator(), playerBox, playBtn, consoleLabel, consoleArea);
-
-        return playerSection;
-    }
-
-    private VBox createSettingsSection() {
-        VBox settingsSection = new VBox(15);
-        settingsSection.setAlignment(Pos.TOP_LEFT);
-        settingsSection.setPadding(new Insets(20));
-        settingsSection.setPrefWidth(400);
-        settingsSection.getStyleClass().add("panel");
-        settingsSection.setStyle("-fx-background-color: rgba(0, 0, 0, 0.3);");
-
-        Label settingsLabel = new Label("Ayarlar");
-        settingsLabel.setFont(Font.font("Arial", FontWeight.BOLD, 18));
-        settingsLabel.setTextFill(TEXT_COLOR);
-
-        // RAM Box
-        HBox ramBox = new HBox(10);
-        ramBox.setAlignment(Pos.CENTER_LEFT);
-        Label ramLabel = new Label("RAM:");
-        ramLabel.setTextFill(TEXT_COLOR);
-        ramLabel.setPrefWidth(120);
-        ramComboBox = new ComboBox<>();
-        ramComboBox.getItems().addAll("2", "4", "6", "8", "12", "16");
-        ramComboBox.setValue(config.getProperty("ram", "4"));
-        ramComboBox.setPrefWidth(80);
-        ramComboBox.valueProperty().addListener((obs, oldVal, newVal) -> config.setProperty("ram", newVal));
-        Label gbLabel = new Label("GB");
-        gbLabel.setTextFill(TEXT_COLOR);
-        ramBox.getChildren().addAll(ramLabel, ramComboBox, gbLabel);
-
-        // Resolution Box
-        HBox resolutionBox = new HBox(10);
-        resolutionBox.setAlignment(Pos.CENTER_LEFT);
-        Label resolutionLabel = new Label("Çözünürlük:");
-        resolutionLabel.setTextFill(TEXT_COLOR);
-        resolutionLabel.setPrefWidth(120);
-        resolutionComboBox = new ComboBox<>();
-        resolutionComboBox.getItems().addAll("800x600", "1024x768", "1280x720", "1366x768", "1600x900", "1920x1080", "2560x1440");
-        resolutionComboBox.setValue(config.getProperty("resolution", "1280x720"));
-        resolutionComboBox.setPrefWidth(120);
-        resolutionComboBox.valueProperty().addListener((obs, oldVal, newVal) -> config.setProperty("resolution", newVal));
-        resolutionBox.getChildren().addAll(resolutionLabel, resolutionComboBox);
-
-        // Fullscreen Box
-        HBox fullscreenBox = new HBox(10);
-        fullscreenBox.setAlignment(Pos.CENTER_LEFT);
-        Label fullscreenLabel = new Label("Tam Ekran:");
-        fullscreenLabel.setTextFill(TEXT_COLOR);
-        fullscreenLabel.setPrefWidth(120);
-        fullscreenCheck = new CheckBox();
-        fullscreenCheck.setSelected(Boolean.parseBoolean(config.getProperty("fullscreen", "false")));
-        fullscreenCheck.selectedProperty().addListener((obs, oldVal, newVal) -> config.setProperty("fullscreen", newVal.toString()));
-        fullscreenBox.getChildren().addAll(fullscreenLabel, fullscreenCheck);
-
-        // Version Box
-        HBox versionBox = new HBox(10);
-        versionBox.setAlignment(Pos.CENTER_LEFT);
-        Label versionLabel = new Label("Minecraft Sürümü:");
-        versionLabel.setTextFill(TEXT_COLOR);
-        versionLabel.setPrefWidth(120);
-        Label versionValueLabel = new Label(MC_VERSION);
-        versionValueLabel.setTextFill(PRIMARY_COLOR);
-        versionValueLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
-        versionBox.getChildren().addAll(versionLabel, versionValueLabel);
-
-        // Fabric Box
-        HBox fabricBox = new HBox(10);
-        fabricBox.setAlignment(Pos.CENTER_LEFT);
-        Label fabricLabel = new Label("Fabric Sürümü:");
-        fabricLabel.setTextFill(TEXT_COLOR);
-        fabricLabel.setPrefWidth(120);
-        Label fabricValueLabel = new Label(FABRIC_VERSION);
-        fabricValueLabel.setTextFill(PRIMARY_COLOR);
-        fabricValueLabel.setFont(Font.font("Arial", FontWeight.BOLD, 12));
-        fabricBox.getChildren().addAll(fabricLabel, fabricValueLabel);
-
-        // Keep Launcher Open
-        HBox keepOpenBox = new HBox(10);
-        keepOpenBox.setAlignment(Pos.CENTER_LEFT);
-        Label keepOpenLabel = new Label("Launcher Açık Kalsın:");
-        keepOpenLabel.setTextFill(TEXT_COLOR);
-        keepOpenLabel.setPrefWidth(120);
-        CheckBox keepOpenCheck = new CheckBox();
-        keepOpenCheck.setSelected(Boolean.parseBoolean(config.getProperty("keepLauncherOpen", "true")));
-        keepOpenCheck.selectedProperty().addListener((obs, oldVal, newVal) -> config.setProperty("keepLauncherOpen", newVal.toString()));
-        keepOpenBox.getChildren().addAll(keepOpenLabel, keepOpenCheck);
-
-        // Show FPS
-        HBox showFPSBox = new HBox(10);
-        showFPSBox.setAlignment(Pos.CENTER_LEFT);
-        Label showFPSLabel = new Label("FPS Göster:");
-        showFPSLabel.setTextFill(TEXT_COLOR);
-        showFPSLabel.setPrefWidth(120);
-        CheckBox showFPSCheck = new CheckBox();
-        showFPSCheck.setSelected(Boolean.parseBoolean(config.getProperty("showFPS", "true")));
-        showFPSCheck.selectedProperty().addListener((obs, oldVal, newVal) -> config.setProperty("showFPS", newVal.toString()));
-        showFPSBox.getChildren().addAll(showFPSLabel, showFPSCheck);
-
-        // Volume Box
-        VBox volumeBox = new VBox(10);
-        volumeBox.setAlignment(Pos.CENTER_LEFT);
-        Label volumeLabel = new Label("Ses");
-        volumeLabel.setFont(Font.font("Arial", FontWeight.BOLD, 14));
-        volumeLabel.setTextFill(TEXT_COLOR);
-
-        // Master Volume
-        HBox masterVolumeBox = new HBox(10);
-        masterVolumeBox.setAlignment(Pos.CENTER_LEFT);
-        Label masterVolumeLabel = new Label("Ana Ses:");
-        masterVolumeLabel.setTextFill(TEXT_COLOR);
-        masterVolumeLabel.setPrefWidth(80);
-        Slider masterVolumeSlider = new Slider(0, 100, Double.parseDouble(config.getProperty("masterVolume", "80")));
-        masterVolumeSlider.setPrefWidth(150);
-        Label masterVolumeValue = new Label(config.getProperty("masterVolume", "80") + "%");
-        masterVolumeValue.setTextFill(TEXT_COLOR);
-        masterVolumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
-            config.setProperty("masterVolume", Integer.toString(newVal.intValue()));
-            masterVolumeValue.setText(newVal.intValue() + "%");
-        });
-        masterVolumeBox.getChildren().addAll(masterVolumeLabel, masterVolumeSlider, masterVolumeValue);
-
-        // Music Volume
-        HBox musicVolumeBox = new HBox(10);
-        musicVolumeBox.setAlignment(Pos.CENTER_LEFT);
-        Label musicVolumeLabel = new Label("Müzik:");
-        musicVolumeLabel.setTextFill(TEXT_COLOR);
-        musicVolumeLabel.setPrefWidth(80);
-        Slider musicVolumeSlider = new Slider(0, 100, Double.parseDouble(config.getProperty("musicVolume", "60")));
-        musicVolumeSlider.setPrefWidth(150);
-        Label musicVolumeValue = new Label(config.getProperty("musicVolume", "60") + "%");
-        musicVolumeValue.setTextFill(TEXT_COLOR);
-        musicVolumeSlider.valueProperty().addListener((obs, oldVal, newVal) -> {
-            config.setProperty("musicVolume", Integer.toString(newVal.intValue()));
-            musicVolumeValue.setText(newVal.intValue() + "%");
-        });
-        musicVolumeBox.getChildren().addAll(musicVolumeLabel, musicVolumeSlider, musicVolumeValue);
-
-        volumeBox.getChildren().addAll(volumeLabel, masterVolumeBox, musicVolumeBox);
-
-        settingsSection.getChildren().addAll(
-                settingsLabel, new Separator(),
-                ramBox, resolutionBox, fullscreenBox,
-                new Separator(),
-                versionBox, fabricBox,
-                new Separator(),
-                keepOpenBox, showFPSBox,
-                new Separator(),
-                volumeBox
+    private void createLoginScene() {
+        loginRoot = new BorderPane();
+        loginRoot.setStyle("-fx-background-color: linear-gradient(to bottom, #141414, #222222);");
+
+        // Create left decoration panel with particles
+        StackPane decorationPane = new StackPane();
+        decorationPane.setPrefWidth(200);
+        decorationPane.setStyle("-fx-background-color: linear-gradient(to bottom, #0a0a0a, #181818);");
+
+        Rectangle sideRect = new Rectangle(200, 400);
+        LinearGradient gradient = new LinearGradient(
+                0, 0, 1, 1, true, CycleMethod.NO_CYCLE,
+                new Stop(0, Color.rgb(30, 150, 80, 0.2)),
+                new Stop(1, Color.rgb(45, 200, 110, 0.1))
+        );
+        sideRect.setFill(gradient);
+
+        Group particles = createParticleEffect();
+
+        ImageView logoImage = new ImageView();
+        logoImage.setFitWidth(120);
+        logoImage.setFitHeight(120);
+        logoImage.setPreserveRatio(true);
+
+        // Load icon image asynchronously
+        loadIcon(logoImage);
+
+        decorationPane.getChildren().addAll(sideRect, particles, logoImage);
+
+        // Create login form
+        VBox loginForm = new VBox(20);
+        loginForm.setAlignment(Pos.CENTER);
+        loginForm.setPadding(new Insets(30));
+        loginForm.setMaxWidth(350);
+
+        Text loginTitle = new Text("WELCOME");
+        loginTitle.setFont(Font.font("Verdana", FontWeight.BOLD, 28));
+        loginTitle.setFill(PRIMARY_COLOR);
+        loginTitle.setEffect(new DropShadow(10, Color.BLACK));
+
+        Text loginSubtitle = new Text("Enter your username to continue");
+        loginSubtitle.setFont(Font.font("Verdana", 14));
+        loginSubtitle.setFill(Color.LIGHTGRAY);
+
+        // Username field with style
+        TextField usernameField = new TextField();
+        usernameField.setPromptText("Username");
+        usernameField.setPrefHeight(40);
+        usernameField.setMaxWidth(250);
+        usernameField.setStyle(
+                "-fx-background-color: " + toHexString(LIGHT_BG) + ";" +
+                        "-fx-text-fill: white;" +
+                        "-fx-prompt-text-fill: gray;" +
+                        "-fx-background-radius: 5;" +
+                        "-fx-border-color: " + toHexString(SECONDARY_COLOR) + ";" +
+                        "-fx-border-radius: 5;" +
+                        "-fx-border-width: 1;" +
+                        "-fx-padding: 5 10 5 10;"
         );
 
-        return settingsSection;
+        // Focus effect for username field
+        usernameField.focusedProperty().addListener((obs, wasFocused, isFocused) -> {
+            if (isFocused) {
+                usernameField.setStyle(
+                        "-fx-background-color: " + toHexString(LIGHT_BG) + ";" +
+                                "-fx-text-fill: white;" +
+                                "-fx-prompt-text-fill: gray;" +
+                                "-fx-background-radius: 5;" +
+                                "-fx-border-color: " + toHexString(PRIMARY_COLOR) + ";" +
+                                "-fx-border-radius: 5;" +
+                                "-fx-border-width: 2;" +
+                                "-fx-padding: 5 10 5 10;"
+                );
+            } else {
+                usernameField.setStyle(
+                        "-fx-background-color: " + toHexString(LIGHT_BG) + ";" +
+                                "-fx-text-fill: white;" +
+                                "-fx-prompt-text-fill: gray;" +
+                                "-fx-background-radius: 5;" +
+                                "-fx-border-color: " + toHexString(SECONDARY_COLOR) + ";" +
+                                "-fx-border-radius: 5;" +
+                                "-fx-border-width: 1;" +
+                                "-fx-padding: 5 10 5 10;"
+                );
+            }
+        });
+
+        // Cool login button
+        Button loginButton = createCoolButton("PLAY NOW", 250, 45);
+
+        loginForm.getChildren().addAll(loginTitle, loginSubtitle, usernameField, loginButton);
+
+        // Add window controls
+        HBox windowControls = createWindowControls();
+        BorderPane.setAlignment(windowControls, Pos.TOP_RIGHT);
+        BorderPane.setMargin(windowControls, new Insets(10));
+
+        // Add all components to login screen
+        loginRoot.setLeft(decorationPane);
+        loginRoot.setCenter(loginForm);
+        loginRoot.setRight(windowControls);
+
+        loginScene = new Scene(loginRoot, 550, 400);
+        loginScene.setFill(Color.TRANSPARENT);
+
+        // Add event handler for login button
+        loginButton.setOnAction(e -> {
+            username = usernameField.getText().trim();
+            if (username.isEmpty()) {
+                shakeNode(usernameField);
+                return;
+            }
+
+            // Transition to main scene with animation
+            FadeTransition fadeOut = new FadeTransition(Duration.millis(500), loginRoot);
+            fadeOut.setFromValue(1);
+            fadeOut.setToValue(0);
+            fadeOut.setOnFinished(event -> {
+                mainStage.setScene(mainScene);
+
+                // Ensure the main stage is the right size
+                mainStage.setWidth(900);
+                mainStage.setHeight(600);
+                mainStage.centerOnScreen();
+
+                // Load player head
+                loadPlayerHead();
+
+                // Show with animation
+                mainRoot.setOpacity(0);
+
+                // Staggered reveal animations
+                revealMainScene();
+            });
+            fadeOut.play();
+        });
     }
 
-    private VBox createNewsSection() {
-        VBox newsSection = new VBox(15);
-        newsSection.setAlignment(Pos.TOP_LEFT);
-        newsSection.setPadding(new Insets(20));
-        newsSection.setPrefWidth(300);
-        newsSection.getStyleClass().add("panel");
-        newsSection.setStyle("-fx-background-color: rgba(0, 0, 0, 0.3);");
-
-        Label newsLabel = new Label("Duyurular & Haberler");
-        newsLabel.setFont(Font.font("Arial", FontWeight.BOLD, 18));
-        newsLabel.setTextFill(TEXT_COLOR);
-
-        ScrollPane newsScroll = new ScrollPane();
-        newsScroll.setFitToWidth(true);
-        newsScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
-        newsScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.AS_NEEDED);
-        newsScroll.getStyleClass().add("scroll-pane");
-
-        newsItemsContainer.getChildren().clear();
-        Label loadingLabel = new Label("Haberler yükleniyor...");
-        loadingLabel.setTextFill(TEXT_COLOR);
-        loadingLabel.setPadding(new Insets(20));
-        newsItemsContainer.getChildren().add(loadingLabel);
-
-        newsScroll.setContent(newsItemsContainer);
-        newsScroll.setPrefHeight(400);
-
-        newsSection.getChildren().addAll(newsLabel, new Separator(), newsScroll);
-
-        return newsSection;
+    private void shakeNode(TextField usernameField) {
+        TranslateTransition shake = new TranslateTransition(Duration.millis(70), usernameField);
+        shake.setFromX(0);
+        shake.setByX(10);
+        shake.setCycleCount(5);
+        shake.setAutoReverse(true);
+        shake.play();
     }
 
-    private HBox createFooter() {
-        HBox footer = new HBox();
-        footer.setAlignment(Pos.CENTER_LEFT);
-        footer.setPadding(new Insets(10, 15, 10, 15));
-        footer.setStyle("-fx-background-color: " + toRGBCode(BG_DARKER) + ";");
-
-        Label versionLabel = new Label("TerraMonic Launcher v" + currentVersion);
-        versionLabel.setTextFill(TEXT_COLOR);
-
-        Region spacer = new Region();
-        HBox.setHgrow(spacer, Priority.ALWAYS);
-
-        Hyperlink websiteLink = new Hyperlink("Resmi Site");
-        websiteLink.setTextFill(PRIMARY_COLOR);
-        websiteLink.setOnAction(e -> openWebPage("https://terramonic.com"));
-
-        Hyperlink discordLink = new Hyperlink("Discord");
-        discordLink.setTextFill(PRIMARY_COLOR);
-        discordLink.setOnAction(e -> openWebPage("https://discord.gg/terramonic"));
-
-        footer.getChildren().addAll(versionLabel, spacer, websiteLink, new Label(" | "), discordLink);
-
-        return footer;
-    }
-    //endregion
-
-    //region Helper Methods
-    private void updatePlayerHead(String username) {
-        if (username == null || username.trim().isEmpty()) {
-            Rectangle defaultHead = new Rectangle(60, 60, Color.rgb(60, 60, 60));
-            playerHead.setImage(new WritableImage(60, 60));
-            return;
-        }
-
+    private void openLink(String url) {
         try {
-            Image head = new Image("https://minotar.net/helm/" + username + "/60.png", true);
-            playerHead.setImage(head);
+            java.awt.Desktop.getDesktop().browse(new URI(url));
         } catch (Exception e) {
-            log("Oyuncu başı yüklenemedi: " + e.getMessage());
-            Rectangle defaultHead = new Rectangle(60, 60, Color.rgb(60, 60, 60));
-            playerHead.setImage(new WritableImage(60, 60));
+            e.printStackTrace();
         }
     }
 
-    private String toRGBCode(Color color) {
-        return String.format("#%02X%02X%02X",
-                (int) (color.getRed() * 255),
-                (int) (color.getGreen() * 255),
-                (int) (color.getBlue() * 255));
-    }
-
-    private void showError(String message) {
+    private void showError(String title, Exception e) {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.ERROR);
-            alert.setTitle("Hata");
-            alert.setHeaderText("Bir hata oluştu");
-            alert.setContentText(message);
+            alert.setTitle(title);
+            alert.setHeaderText(e.getClass().getSimpleName());
+            alert.setContentText(e.getMessage());
             alert.showAndWait();
         });
     }
 
-    private void log(String message) {
-        Platform.runLater(() -> {
-            if (consoleArea != null) {
-                String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
-                consoleArea.appendText("[" + timestamp + "] " + message + "\n");
-                consoleArea.positionCaret(consoleArea.getText().length());
+    private void revealMainScene() {
+        // Get UI components
+        Node sidebar = mainRoot.getLeft();
+        Node centerContent = mainRoot.getCenter();
+        Node newsPanel = mainRoot.getRight();
+        Node bottomBar = mainRoot.getBottom();
+
+        // Initially hide all components
+        sidebar.setOpacity(0);
+        centerContent.setOpacity(0);
+        newsPanel.setOpacity(0);
+        bottomBar.setOpacity(0);
+
+        mainRoot.setOpacity(1);
+
+        // Staggered animations
+        TranslateTransition sidebarSlide = new TranslateTransition(Duration.millis(400), sidebar);
+        sidebarSlide.setFromX(-100);
+        sidebarSlide.setToX(0);
+
+        FadeTransition sidebarFade = new FadeTransition(Duration.millis(400), sidebar);
+        sidebarFade.setFromValue(0);
+        sidebarFade.setToValue(1);
+
+        ParallelTransition sidebarAnim = new ParallelTransition(sidebarSlide, sidebarFade);
+
+        TranslateTransition centerSlide = new TranslateTransition(Duration.millis(400), centerContent);
+        centerSlide.setFromY(50);
+        centerSlide.setToY(0);
+
+        FadeTransition centerFade = new FadeTransition(Duration.millis(400), centerContent);
+        centerFade.setFromValue(0);
+        centerFade.setToValue(1);
+
+        ParallelTransition centerAnim = new ParallelTransition(centerSlide, centerFade);
+
+        TranslateTransition newsSlide = new TranslateTransition(Duration.millis(400), newsPanel);
+        newsSlide.setFromX(100);
+        newsSlide.setToX(0);
+
+        FadeTransition newsFade = new FadeTransition(Duration.millis(400), newsPanel);
+        newsFade.setFromValue(0);
+        newsFade.setToValue(1);
+
+        ParallelTransition newsAnim = new ParallelTransition(newsSlide, newsFade);
+
+        FadeTransition bottomFade = new FadeTransition(Duration.millis(400), bottomBar);
+        bottomFade.setFromValue(0);
+        bottomFade.setToValue(1);
+
+        // Build sequence
+        SequentialTransition sequence = new SequentialTransition(
+                sidebarAnim,
+                centerAnim,
+                newsAnim,
+                bottomFade
+        );
+
+        sequence.play();
+    }
+
+    private void createMainScene() {
+        mainRoot = new BorderPane();
+        mainRoot.setStyle("-fx-background-color: linear-gradient(to bottom, #141414, #222222);");
+
+        // Create left sidebar
+        VBox sidebar = createSidebar();
+
+        // Create center content
+        VBox centerContent = new VBox(20);
+        centerContent.setPadding(new Insets(20));
+        centerContent.setAlignment(Pos.TOP_CENTER);
+
+        // Welcome header
+        HBox welcomeBox = new HBox(10);
+        welcomeBox.setAlignment(Pos.CENTER_LEFT);
+
+        Text welcomeText = new Text("Welcome to TerraMonic");
+        welcomeText.setFont(Font.font("Verdana", FontWeight.BOLD, 24));
+        welcomeText.setFill(PRIMARY_COLOR);
+
+        welcomeBox.getChildren().add(welcomeText);
+
+        // Game settings panel
+        VBox settingsPanel = new VBox(20);
+        settingsPanel.setPadding(new Insets(20));
+        settingsPanel.setStyle(
+                "-fx-background-color: " + toHexString(LIGHT_BG) + ";" +
+                        "-fx-background-radius: 10;" +
+                        "-fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.4), 10, 0, 0, 5);"
+        );
+
+        Text settingsTitle = new Text("GAME SETTINGS");
+        settingsTitle.setFont(Font.font("Verdana", FontWeight.BOLD, 16));
+        settingsTitle.setFill(PRIMARY_COLOR);
+
+        // RAM slider
+        VBox ramBox = new VBox(10);
+
+        HBox ramLabelBox = new HBox();
+        Label ramLabel = new Label("Memory Allocation");
+        ramLabel.setTextFill(Color.WHITE);
+        ramLabel.setFont(Font.font("Verdana", 14));
+
+        Label ramValueLabel = new Label();
+        ramValueLabel.setTextFill(PRIMARY_COLOR);
+        ramValueLabel.setFont(Font.font("Verdana", FontWeight.BOLD, 14));
+
+        ramLabelBox.getChildren().addAll(ramLabel, new Region() {{
+            HBox.setHgrow(this, Priority.ALWAYS);
+        }}, ramValueLabel);
+
+        // Calculate max RAM
+        long maxRam = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getMax() / (1024 * 1024);
+        maxRam = Math.min(maxRam, 16384); // Cap at 16GB
+
+        // Create stylish slider
+        Slider ramSlider = new Slider(1024, maxRam, 2048);
+        ramSlider.valueProperty().bindBidirectional(allocatedRam);
+        ramSlider.setShowTickMarks(true);
+        ramSlider.setMajorTickUnit(1024);
+        ramSlider.setBlockIncrement(512);
+        ramSlider.setStyle(
+                "-fx-control-inner-background: #2A2A2A;" +
+                        "-fx-track-background: #2A2A2A;" +
+                        "-fx-track: #2A2A2A;" +
+                        "-fx-accent: " + toHexString(PRIMARY_COLOR) + ";"
+        );
+
+        ramValueLabel.textProperty().bind(allocatedRam.asString("%.0f MB"));
+
+        // DÜZELTME: Thumb stilini güvenli şekilde ayarla
+        ramSlider.skinProperty().addListener((obs, oldSkin, newSkin) -> {
+            Node thumb = ramSlider.lookup(".thumb");
+            if (thumb != null) {
+                thumb.setStyle(
+                        "-fx-background-color: linear-gradient(to bottom, #ffffff, " + toHexString(PRIMARY_COLOR) + ");" +
+                                "-fx-background-radius: 50%;"
+                );
             }
-            System.out.println(message);
+        });
+
+        ramBox.getChildren().addAll(ramLabelBox, ramSlider);
+
+        // Fullscreen option
+        HBox fullscreenBox = new HBox(10);
+        fullscreenBox.setAlignment(Pos.CENTER_LEFT);
+
+        Label fullscreenLabel = new Label("Launch in Fullscreen");
+        fullscreenLabel.setTextFill(Color.WHITE);
+        fullscreenLabel.setFont(Font.font("Verdana", 14));
+
+        CheckBox fullscreenCheckbox = new CheckBox();
+        fullscreenCheckbox.selectedProperty().addListener((obs, oldVal, newVal) -> fullscreenMode = newVal);
+        fullscreenCheckbox.setStyle("-fx-text-fill: white;");
+
+        // Style checkbox
+        fullscreenCheckbox.skinProperty().addListener((obs, oldSkin, newSkin) -> {
+            Region box = (Region) fullscreenCheckbox.lookup(".box");
+            if (box != null) {
+                box.setStyle(
+                        "-fx-background-color: #2A2A2A;" +
+                                "-fx-border-color: " + toHexString(SECONDARY_COLOR) + ";" +
+                                "-fx-border-radius: 3px;"
+                );
+            }
+        });
+
+        fullscreenBox.getChildren().addAll(fullscreenLabel, new Region() {{
+            HBox.setHgrow(this, Priority.ALWAYS);
+        }}, fullscreenCheckbox);
+
+        // Custom server selection
+        HBox serverBox = new HBox(10);
+        serverBox.setAlignment(Pos.CENTER_LEFT);
+
+        Label serverLabel = new Label("Server");
+        serverLabel.setTextFill(Color.WHITE);
+        serverLabel.setFont(Font.font("Verdana", 14));
+
+        ComboBox<String> serverComboBox = new ComboBox<>();
+        serverComboBox.getItems().addAll("play.terramonic.com", "blocksmc.com");
+        serverComboBox.setValue("play.terramonic.com");
+        serverComboBox.setStyle(
+                "-fx-background-color: #2A2A2A;" +
+                        "-fx-text-fill: white;" +
+                        "-fx-font: 14px 'Verdana';" +
+                        "-fx-border-color: " + toHexString(SECONDARY_COLOR) + ";" +
+                        "-fx-border-radius: 3px;"
+        );
+
+        serverBox.getChildren().addAll(serverLabel, new Region() {{
+            HBox.setHgrow(this, Priority.ALWAYS);
+        }}, serverComboBox);
+
+        // Add all to settings panel
+        settingsPanel.getChildren().addAll(settingsTitle, ramBox, fullscreenBox, serverBox);
+
+        // Version info
+        HBox versionBox = new HBox(10);
+        versionBox.setAlignment(Pos.CENTER);
+        versionBox.setStyle(
+                "-fx-background-color: " + toHexString(MID_BG) + ";" +
+                        "-fx-background-radius: 5;" +
+                        "-fx-padding: 10;"
+        );
+
+        Text versionInfo = new Text("Minecraft " + MINECRAFT_VERSION + " • Fabric " + FABRIC_VERSION);
+        versionInfo.setFill(Color.LIGHTGRAY);
+        versionInfo.setFont(Font.font("Verdana", 12));
+
+        versionBox.getChildren().add(versionInfo);
+
+        // Add all to center content
+        centerContent.getChildren().addAll(welcomeBox, settingsPanel, versionBox);
+
+        // Create right news panel
+        VBox newsPanel = createNewsPanel();
+
+        // Create bottom status bar
+        HBox bottomBar = new HBox(10);
+        bottomBar.setPadding(new Insets(10, 20, 10, 20));
+        bottomBar.setStyle("-fx-background-color: " + toHexString(MID_BG) + ";");
+        bottomBar.setAlignment(Pos.CENTER_LEFT);
+
+        downloadStatusLabel = new Label("");
+        downloadStatusLabel.setTextFill(Color.LIGHTGRAY);
+
+        Region bottomSpacer = new Region();
+        HBox.setHgrow(bottomSpacer, Priority.ALWAYS);
+
+        Button playButton = createPlayButton();
+
+        bottomBar.getChildren().addAll(downloadStatusLabel, bottomSpacer, playButton);
+
+        // Add window controls
+        HBox windowControls = createWindowControls();
+        BorderPane.setAlignment(windowControls, Pos.TOP_RIGHT);
+        BorderPane.setMargin(windowControls, new Insets(10));
+
+        // Add all components to main scene
+        mainRoot.setLeft(sidebar);
+        mainRoot.setCenter(centerContent);
+        mainRoot.setRight(newsPanel);
+        mainRoot.setBottom(bottomBar);
+        mainRoot.setTop(windowControls);
+
+        mainScene = new Scene(mainRoot, 900, 600);
+        mainScene.setFill(Color.TRANSPARENT);
+
+        // Add drag listeners to main scene
+        mainScene.setOnMousePressed(event -> {
+            xOffset = event.getSceneX();
+            yOffset = event.getSceneY();
+        });
+
+        mainScene.setOnMouseDragged(event -> {
+            mainStage.setX(event.getScreenX() - xOffset);
+            mainStage.setY(event.getScreenY() - yOffset);
         });
     }
 
-    private void updateStatus(String status) {
-        Platform.runLater(() -> {
-            if (statusLabel != null) {
-                statusLabel.setText(status);
-            }
-        });
-    }
+    private VBox createSidebar() {
+        VBox sidebar = new VBox(15);
+        sidebar.setPrefWidth(200);
+        sidebar.setPadding(new Insets(20, 10, 20, 20));
+        sidebar.setStyle("-fx-background-color: " + toHexString(DARK_BG) + ";");
 
-    private void updateProgress(double progress) {
-        Platform.runLater(() -> {
-            if (progressBar != null) {
-                progressBar.setProgress(progress);
-            }
-        });
-    }
+        // Logo section
+        HBox logoBox = new HBox(10);
+        logoBox.setAlignment(Pos.CENTER_LEFT);
 
-    private void openWebPage(String url) {
-        try {
-            new ProcessBuilder("cmd", "/c", "start", url).start();
-        } catch (IOException e) {
-            log("Web sayfası açılamadı: " + e.getMessage());
-            showError("Web sayfası açılamadı: " + url);
+        ImageView logoImage = new ImageView();
+        logoImage.setFitWidth(40);
+        logoImage.setFitHeight(40);
+        logoImage.setPreserveRatio(true);
+
+        // Load icon image asynchronously
+        loadIcon(logoImage);
+
+        Text logoText = new Text("TerraMonic");
+        logoText.setFont(Font.font("Verdana", FontWeight.BOLD, 18));
+        logoText.setFill(PRIMARY_COLOR);
+
+        logoBox.getChildren().addAll(logoImage, logoText);
+
+        // User info section
+        VBox userBox = new VBox(10);
+        userBox.setPadding(new Insets(20, 0, 20, 0));
+        userBox.setAlignment(Pos.CENTER);
+
+        playerHead = new ImageView();
+        playerHead.setFitWidth(80);
+        playerHead.setFitHeight(80);
+        playerHead.setPreserveRatio(true);
+
+        // Add circle clip for player head
+        Circle clip = new Circle(40);
+        clip.setCenterX(40);
+        clip.setCenterY(40);
+        playerHead.setClip(clip);
+
+        // Add glow effect around head
+        DropShadow glow = new DropShadow();
+        glow.setColor(PRIMARY_COLOR);
+        glow.setRadius(15);
+        playerHead.setEffect(glow);
+
+        Text usernameText = new Text(username);
+        usernameText.setFont(Font.font("Verdana", FontWeight.BOLD, 16));
+        usernameText.setFill(Color.WHITE);
+
+        userBox.getChildren().addAll(playerHead, usernameText);
+
+        // Navigation menu
+        VBox menuBox = new VBox(5);
+        menuBox.setPadding(new Insets(10, 0, 10, 0));
+
+        String[] menuItems = {"Home", "Mods", "Resource Packs", "Settings"};
+
+        for (String item : menuItems) {
+            HBox menuItem = new HBox(10);
+            menuItem.setPadding(new Insets(8, 10, 8, 10));
+            menuItem.setAlignment(Pos.CENTER_LEFT);
+
+            Rectangle highlight = new Rectangle(5, 30);
+            highlight.setArcWidth(5);
+            highlight.setArcHeight(5);
+            highlight.setFill(Color.TRANSPARENT);
+
+            Text itemText = new Text(item);
+            itemText.setFont(Font.font("Verdana", 14));
+            itemText.setFill(Color.LIGHTGRAY);
+
+            menuItem.getChildren().addAll(highlight, itemText);
+
+            // Hover effect
+            menuItem.setOnMouseEntered(e -> {
+                highlight.setFill(PRIMARY_COLOR);
+                itemText.setFill(Color.WHITE);
+                menuItem.setCursor(javafx.scene.Cursor.HAND);
+
+                // Scale animation
+                ScaleTransition scale = new ScaleTransition(Duration.millis(100), menuItem);
+                scale.setToX(1.05);
+                scale.setToY(1.05);
+                scale.play();
+            });
+
+            menuItem.setOnMouseExited(e -> {
+                highlight.setFill(Color.TRANSPARENT);
+                itemText.setFill(Color.LIGHTGRAY);
+
+                // Scale back
+                ScaleTransition scale = new ScaleTransition(Duration.millis(100), menuItem);
+                scale.setToX(1.0);
+                scale.setToY(1.0);
+                scale.play();
+            });
+
+            menuItem.setOnMouseClicked(e -> {
+                // Handle menu selection
+                // For now just highlight it
+                for (Node node : menuBox.getChildren()) {
+                    HBox item2 = (HBox) node;
+                    ((Rectangle) item2.getChildren().get(0)).setFill(Color.TRANSPARENT);
+                    ((Text) item2.getChildren().get(1)).setFill(Color.LIGHTGRAY);
+                }
+
+                highlight.setFill(PRIMARY_COLOR);
+                itemText.setFill(Color.WHITE);
+            });
+
+            menuBox.getChildren().add(menuItem);
         }
-    }
-    //endregion
 
-    //region Game Installation and Launch
-    private void createAppDataFolder() {
-        try {
-            Files.createDirectories(Paths.get(APP_DATA));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR + "/libraries"));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR + "/versions"));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR + "/assets"));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR + "/mods"));
-            log("Uygulama dizinleri oluşturuldu: " + APP_DATA);
-        } catch (IOException e) {
-            log("Dizin oluşturma hatası: " + e.getMessage());
-            showError("Dizin oluşturma hatası: " + e.getMessage());
+        // Version info
+        Region spacer = new Region();
+        VBox.setVgrow(spacer, Priority.ALWAYS);
+
+        HBox versionInfo = new HBox();
+        versionInfo.setAlignment(Pos.CENTER);
+
+        Text versionText = new Text("Launcher v" + launcherVersion);
+        versionText.setFont(Font.font("Verdana", 12));
+        versionText.setFill(Color.GRAY);
+
+        versionInfo.getChildren().add(versionText);
+
+        // Add all to sidebar
+        sidebar.getChildren().addAll(logoBox, userBox, menuBox, spacer, versionInfo);
+
+        return sidebar;
+    }
+
+    private VBox createNewsPanel() {
+        VBox newsPanel = new VBox(15);
+        newsPanel.setPrefWidth(250);
+        newsPanel.setPadding(new Insets(20));
+        newsPanel.setStyle(
+                "-fx-background-color: " + toHexString(MID_BG) + ";" +
+                        "-fx-background-radius: 10 0 0 0;"
+        );
+
+        // News header
+        Text newsHeader = new Text("Latest News");
+        newsHeader.setFont(Font.font("Verdana", FontWeight.BOLD, 18));
+        newsHeader.setFill(PRIMARY_COLOR);
+
+        // News items scroll pane
+        ScrollPane newsScroll = new ScrollPane();
+        newsScroll.setFitToWidth(true);
+        newsScroll.setStyle(
+                "-fx-background: transparent;" +
+                        "-fx-background-color: transparent;" +
+                        "-fx-padding: 0;" +
+                        "-fx-border-color: transparent;"
+        );
+
+        VBox newsItems = new VBox(15);
+        newsItems.setPadding(new Insets(10, 5, 10, 5));
+
+        // We'll load news from the version data later
+        newsText = new Text("Loading news...");
+        newsText.setFill(Color.LIGHTGRAY);
+        newsText.setFont(Font.font("Verdana", 14));
+        newsText.setWrappingWidth(210);
+
+        newsItems.getChildren().add(newsText);
+        newsScroll.setContent(newsItems);
+
+        // Discord link
+        HBox discordBox = new HBox(10);
+        discordBox.setAlignment(Pos.CENTER);
+        discordBox.setPadding(new Insets(10));
+        discordBox.setStyle(
+                "-fx-background-color: " + toHexString(LIGHT_BG) + ";" +
+                        "-fx-background-radius: 5;"
+        );
+
+        Text discordText = new Text("Join Our Discord");
+        discordText.setFont(Font.font("Verdana", FontWeight.BOLD, 14));
+        discordText.setFill(Color.WHITE);
+
+        discordBox.getChildren().add(discordText);
+
+        // Hover effect for Discord button
+        discordBox.setOnMouseEntered(e -> {
+            discordBox.setStyle(
+                    "-fx-background-color: " + toHexString(PRIMARY_COLOR) + ";" +
+                            "-fx-background-radius: 5;" +
+                            "-fx-cursor: hand;"
+            );
+            discordText.setFill(Color.BLACK);
+        });
+
+        discordBox.setOnMouseExited(e -> {
+            discordBox.setStyle(
+                    "-fx-background-color: " + toHexString(LIGHT_BG) + ";" +
+                            "-fx-background-radius: 5;"
+            );
+            discordText.setFill(Color.WHITE);
+        });
+
+        discordBox.setOnMouseClicked(e -> openLink("https://discord.gg/terramonic"));
+
+        // Add all to news panel
+        newsPanel.getChildren().addAll(newsHeader, newsScroll, discordBox);
+
+        VBox.setVgrow(newsScroll, Priority.ALWAYS);
+
+        return newsPanel;
+    }
+
+
+    private HBox createWindowControls() {
+        HBox controls = new HBox(10);
+        controls.setAlignment(Pos.CENTER_RIGHT);
+
+        // Minimize button
+        Button minimizeBtn = new Button("-");
+        styleWindowButton(minimizeBtn);
+        minimizeBtn.setOnAction(e -> mainStage.setIconified(true));
+
+        // Close button
+        Button closeBtn = new Button("×");
+        styleWindowButton(closeBtn);
+        closeBtn.setStyle(closeBtn.getStyle() + "-fx-text-fill: white;");
+        closeBtn.setOnMouseEntered(e -> closeBtn.setStyle(closeBtn.getStyle() + "-fx-background-color: #e81123;"));
+        closeBtn.setOnMouseExited(e -> styleWindowButton(closeBtn));
+
+        closeBtn.setOnAction(e -> {
+            if (executor != null) {
+                executor.shutdownNow();
+            }
+            Platform.exit();
+        });
+
+        controls.getChildren().addAll(minimizeBtn, closeBtn);
+        return controls;
+    }
+
+    private void styleWindowButton(Button button) {
+        button.setStyle(
+                "-fx-background-color: transparent;" +
+                        "-fx-text-fill: #cccccc;" +
+                        "-fx-font-size: 16px;" +
+                        "-fx-padding: 3px 10px;" +
+                        "-fx-cursor: hand;"
+        );
+
+        button.setOnMouseEntered(e -> {
+            button.setStyle(
+                    "-fx-background-color: #404040;" +
+                            "-fx-text-fill: white;" +
+                            "-fx-font-size: 16px;" +
+                            "-fx-padding: 3px 10px;"
+            );
+        });
+
+        button.setOnMouseExited(e -> {
+            button.setStyle(
+                    "-fx-background-color: transparent;" +
+                            "-fx-text-fill: #cccccc;" +
+                            "-fx-font-size: 16px;" +
+                            "-fx-padding: 3px 10px;"
+            );
+        });
+    }
+
+    private Button createCoolButton(String text, double width, double height) {
+        Button button = new Button(text);
+        button.setPrefSize(width, height);
+        button.setStyle(
+                "-fx-background-color: linear-gradient(to bottom, " + toHexString(PRIMARY_COLOR) + ", " + toHexString(SECONDARY_COLOR) + ");" +
+                        "-fx-text-fill: white;" +
+                        "-fx-font-weight: bold;" +
+                        "-fx-font-size: 14px;" +
+                        "-fx-background-radius: 5;" +
+                        "-fx-cursor: hand;"
+        );
+
+        button.setOnMouseEntered(e -> {
+            button.setStyle(
+                    "-fx-background-color: linear-gradient(to bottom, " + toHexString(PRIMARY_COLOR.brighter()) + ", " + toHexString(SECONDARY_COLOR.brighter()) + ");" +
+                            "-fx-text-fill: white;" +
+                            "-fx-font-weight: bold;" +
+                            "-fx-font-size: 14px;" +
+                            "-fx-background-radius: 5;" +
+                            "-fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.4), 10, 0, 0, 5);"
+            );
+        });
+
+        button.setOnMouseExited(e -> {
+            button.setStyle(
+                    "-fx-background-color: linear-gradient(to bottom, " + toHexString(PRIMARY_COLOR) + ", " + toHexString(SECONDARY_COLOR) + ");" +
+                            "-fx-text-fill: white;" +
+                            "-fx-font-weight: bold;" +
+                            "-fx-font-size: 14px;" +
+                            "-fx-background-radius: 5;"
+            );
+        });
+
+        button.setOnMousePressed(e -> {
+            button.setStyle(
+                    "-fx-background-color: linear-gradient(to bottom, " + toHexString(SECONDARY_COLOR) + ", " + toHexString(PRIMARY_COLOR) + ");" +
+                            "-fx-text-fill: white;" +
+                            "-fx-font-weight: bold;" +
+                            "-fx-font-size: 14px;" +
+                            "-fx-background-radius: 5;" +
+                            "-fx-translate-y: 1px;"
+            );
+        });
+
+        button.setOnMouseReleased(e -> {
+            button.setStyle(
+                    "-fx-background-color: linear-gradient(to bottom, " + toHexString(PRIMARY_COLOR) + ", " + toHexString(SECONDARY_COLOR) + ");" +
+                            "-fx-text-fill: white;" +
+                            "-fx-font-weight: bold;" +
+                            "-fx-font-size: 14px;" +
+                            "-fx-background-radius: 5;"
+            );
+        });
+
+        return button;
+    }
+
+    private Button createPlayButton() {
+        Button playButton = new Button("PLAY");
+        playButton.setPrefSize(120, 40);
+
+        // Create glowing border with animation
+        Rectangle border = new Rectangle(120, 40);
+        border.setArcWidth(5);
+        border.setArcHeight(5);
+        border.setFill(Color.TRANSPARENT);
+        border.setStroke(PRIMARY_COLOR);
+        border.setStrokeWidth(2);
+
+        // Create play button style
+        playButton.setStyle(
+                "-fx-background-color: linear-gradient(to bottom, " + toHexString(PRIMARY_COLOR) + ", " + toHexString(SECONDARY_COLOR) + ");" +
+                        "-fx-text-fill: white;" +
+                        "-fx-font-weight: bold;" +
+                        "-fx-font-size: 16px;" +
+                        "-fx-background-radius: 5;" +
+                        "-fx-cursor: hand;"
+        );
+
+        StackPane buttonStack = new StackPane(border, playButton);
+
+        // Create glow animation
+        Timeline timeline = new Timeline(
+                new KeyFrame(Duration.ZERO, new KeyValue(border.strokeProperty(), PRIMARY_COLOR)),
+                new KeyFrame(Duration.seconds(1.5), new KeyValue(border.strokeProperty(), PRIMARY_COLOR.brighter()))
+        );
+        timeline.setAutoReverse(true);
+        timeline.setCycleCount(Timeline.INDEFINITE);
+        timeline.play();
+
+        // Create button hover effects
+        playButton.setOnMouseEntered(e -> {
+            playButton.setStyle(
+                    "-fx-background-color: linear-gradient(to bottom, " + toHexString(PRIMARY_COLOR.brighter()) + ", " + toHexString(SECONDARY_COLOR.brighter()) + ");" +
+                            "-fx-text-fill: white;" +
+                            "-fx-font-weight: bold;" +
+                            "-fx-font-size: 16px;" +
+                            "-fx-background-radius: 5;"
+            );
+
+            ScaleTransition scale = new ScaleTransition(Duration.millis(100), buttonStack);
+            scale.setToX(1.05);
+            scale.setToY(1.05);
+            scale.play();
+        });
+
+        playButton.setOnMouseExited(e -> {
+            playButton.setStyle(
+                    "-fx-background-color: linear-gradient(to bottom, " + toHexString(PRIMARY_COLOR) + ", " + toHexString(SECONDARY_COLOR) + ");" +
+                            "-fx-text-fill: white;" +
+                            "-fx-font-weight: bold;" +
+                            "-fx-font-size: 16px;" +
+                            "-fx-background-radius: 5;"
+            );
+
+            ScaleTransition scale = new ScaleTransition(Duration.millis(100), buttonStack);
+            scale.setToX(1.0);
+            scale.setToY(1.0);
+            scale.play();
+        });
+
+        playButton.setOnMousePressed(e -> {
+            playButton.setStyle(
+                    "-fx-background-color: linear-gradient(to bottom, " + toHexString(SECONDARY_COLOR) + ", " + toHexString(PRIMARY_COLOR) + ");" +
+                            "-fx-text-fill: white;" +
+                            "-fx-font-weight: bold;" +
+                            "-fx-font-size: 16px;" +
+                            "-fx-background-radius: 5;" +
+                            "-fx-translate-y: 1px;"
+            );
+        });
+
+        playButton.setOnMouseReleased(e -> {
+            playButton.setStyle(
+                    "-fx-background-color: linear-gradient(to bottom, " + toHexString(PRIMARY_COLOR) + ", " + toHexString(SECONDARY_COLOR) + ");" +
+                            "-fx-text-fill: white;" +
+                            "-fx-font-weight: bold;" +
+                            "-fx-font-size: 16px;" +
+                            "-fx-background-radius: 5;"
+            );
+        });
+
+        // Set play button action
+        playButton.setOnAction(e -> launchGame());
+
+        return playButton;
+    }
+
+    private Group createParticleEffect() {
+        Group particles = new Group();
+        Random random = new Random();
+
+        // Create particles
+        for (int i = 0; i < 25; i++) {
+            Circle particle = new Circle(random.nextDouble() * 3 + 1);
+            particle.setFill(PRIMARY_COLOR.deriveColor(0, 1, 1, 0.6));
+            particle.setTranslateX(random.nextDouble() * 200);
+            particle.setTranslateY(random.nextDouble() * 400);
+
+            // Create floating animation
+            double duration = random.nextDouble() * 10 + 5;
+            double startY = particle.getTranslateY();
+            double range = random.nextDouble() * 30 + 10;
+
+            KeyValue kv1 = new KeyValue(particle.translateYProperty(), startY - range / 2, Interpolator.EASE_BOTH);
+            KeyValue kv2 = new KeyValue(particle.translateYProperty(), startY + range / 2, Interpolator.EASE_BOTH);
+            KeyFrame kf1 = new KeyFrame(Duration.ZERO, kv1);
+            KeyFrame kf2 = new KeyFrame(Duration.seconds(duration), kv2);
+
+            Timeline timeline = new Timeline(kf1, kf2);
+            timeline.setCycleCount(Timeline.INDEFINITE);
+            timeline.setAutoReverse(true);
+            timeline.play();
+
+            // Add pulse animation
+            double pulseDuration = random.nextDouble() * 4 + 2;
+            FadeTransition fade = new FadeTransition(Duration.seconds(pulseDuration), particle);
+            fade.setFromValue(0.2);
+            fade.setToValue(0.8);
+            fade.setCycleCount(Timeline.INDEFINITE);
+            fade.setAutoReverse(true);
+            fade.play();
+
+            particles.getChildren().add(particle);
         }
+
+        return particles;
     }
 
-    private void checkForUpdates() {
-        Service<Boolean> updateService = new Service<>() {
+    private void initialize() {
+        Task<Void> initTask = new Task<Void>() {
             @Override
-            protected Task<Boolean> createTask() {
-                return new Task<Boolean>() {
-                    @Override
-                    protected Boolean call() throws Exception {
-                        updateStatus("Güncellemeler kontrol ediliyor...");
-                        updateProgress(0.1);
+            protected Void call() throws Exception {
+                try {
+                    updateStatus(0.1, "Checking for updates...");
+                    checkVersion(); // Artık hata fırlatmayacak
 
-                        URI uri = new URI(VERSION_JSON);
-                        HttpURLConnection connection = (HttpURLConnection) uri.toURL().openConnection();
-                        connection.setRequestMethod("GET");
-                        connection.setConnectTimeout(5000);
-                        connection.setReadTimeout(5000);
+                    updateStatus(0.3, "Preparing game assets...");
+                    downloadAssets();
 
-                        try (InputStream in = connection.getInputStream();
-                             BufferedReader reader = new BufferedReader(new InputStreamReader(in))) {
-                            StringBuilder response = new StringBuilder();
-                            String line;
-                            while ((line = reader.readLine()) != null) {
-                                response.append(line);
-                            }
+                    updateStatus(0.6, "Setting up Fabric...");
+                    setupFabric();
 
-                            updateProgress(0.2);
-                            versionData = new JSONObject(response.toString());
+                    updateStatus(0.9, "Loading news...");
+                    loadNews();
 
-                            // Check maintenance mode
-                            if (versionData.has("bakimmodu") && versionData.getBoolean("bakimmodu")) {
-                                Platform.runLater(() -> {
-                                    showError("Sunucular bakım modunda. Lütfen daha sonra tekrar deneyin.");
-                                    Platform.exit();
-                                    System.exit(0);
-                                });
-                                return false;
-                            }
+                    updateStatus(1.0, "Ready to play!");
 
-                            // Download and extract additional files
-                            if (versionData.has("ekdosyalar")) {
-                                JSONArray extraFiles = versionData.getJSONArray("ekdosyalar");
-                                int totalFiles = extraFiles.length();
-                                for (int i = 0; i < totalFiles; i++) {
-                                    JSONObject file = extraFiles.getJSONObject(i);
-                                    String name = file.getString("ad");
-                                    String url = file.getString("url");
-                                    Path targetPath = Paths.get(APP_DATA, name);
-
-                                    updateStatus("İndiriliyor: " + name);
-                                    downloadFile(url, targetPath);
-
-                                    if (name.endsWith(".zip")) {
-                                        updateStatus("Ayıklanıyor: " + name);
-                                        extractZip(targetPath, Paths.get(APP_DATA));
-                                        Files.deleteIfExists(targetPath);
-                                        log("Zip dosyası silindi: " + name);
-                                    }
-
-                                    updateProgress(0.2 + (i + 1) * 0.2 / totalFiles);
-                                }
-
-                                updateStatus("Boş dizinler temizleniyor...");
-                                cleanEmptyDirectories(Paths.get(APP_DATA));
-                            }
-
-                            updateProgress(0.4);
-                            return true;
-                        }
+                    if (maintenanceMode) {
+                        Platform.runLater(() -> showMaintenanceAlert());
                     }
 
-                    private void updateProgress(double v) {
-                    }
-                };
+                    Platform.runLater(() -> transitionToLoginScene());
+                } catch (Exception e) {
+                    Platform.runLater(() -> {
+                        showError("Initialization Error", e);
+                        transitionToLoginScene(); // Hata olsa bile login ekranına geç
+                    });
+                }
+                return null;
             }
         };
-
-        updateService.setOnSucceeded(event -> {
-            if (versionData != null && versionData.has("version")) {
-                String latestVersion = versionData.getString("version");
-                log("En son versiyon: " + latestVersion);
-                log("Mevcut versiyon: " + currentVersion);
-
-                if (!latestVersion.equals(currentVersion)) {
-                    updateStatus("Yeni güncelleme mevcut: " + latestVersion);
-                    showUpdateDialog(latestVersion);
-                } else {
-                    updateStatus("En son sürümü kullanıyorsunuz");
-                    updateProgress(0.5);
-                    loadNews();
-                    PauseTransition pause = new PauseTransition(Duration.seconds(1));
-                    pause.setOnFinished(e -> showMainUI());
-                    pause.play();
-                }
-            } else {
-                updateStatus("Versiyon bilgisi alınamadı");
-                offlineMode = true;
-                loadNews();
-                showMainUI();
-            }
-        });
-
-        updateService.setOnFailed(event -> {
-            updateProgress(0.0);
-            Throwable exception = updateService.getException();
-            log("Güncelleme kontrolü başarısız: " + (exception != null ? exception.getMessage() : "Bilinmeyen hata"));
-            updateStatus("Çevrimdışı mod");
-            offlineMode = true;
-            loadNews();
-            showMainUI();
-        });
-
-        updateService.start();
+        executor.submit(initTask);
     }
 
-    private void downloadFile(String url, Path target) throws IOException {
+    private void showMaintenanceAlert() {
+        Alert alert = new Alert(Alert.AlertType.WARNING);
+        alert.setTitle("Maintenance Mode");
+        alert.setHeaderText("Server Maintenance");
+        alert.setContentText("TerraMonic is currently under maintenance. Some features may be limited.");
+
+        // Stil ayarları
+        DialogPane dialogPane = alert.getDialogPane();
+        dialogPane.setStyle("-fx-background-color: #2A2A2A;");
+        dialogPane.lookup(".content.label").setStyle("-fx-text-fill: white;");
+
+        alert.show();
+    }
+
+    private void transitionToLoginScene() {
+        FadeTransition fade = new FadeTransition(Duration.millis(500), splashRoot);
+        fade.setFromValue(1);
+        fade.setToValue(0);
+        fade.setOnFinished(e -> {
+            mainStage.setScene(loginScene);
+            mainStage.setWidth(550);
+            mainStage.setHeight(400);
+            mainStage.centerOnScreen();
+            addDragListeners();
+        });
+        fade.play();
+    }
+
+    private void checkVersion() throws Exception {
         try {
-            HttpURLConnection connection = (HttpURLConnection) new URI(url).toURL().openConnection();
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(5000);
-            connection.setReadTimeout(5000);
+            String versionJson = downloadString(VERSION_URL);
+            versionData = new JSONObject(versionJson);
 
-            Files.createDirectories(target.getParent());
-            try (ReadableByteChannel rbc = Channels.newChannel(connection.getInputStream());
-                 FileChannel fc = FileChannel.open(target, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
-                fc.transferFrom(rbc, 0, Long.MAX_VALUE);
+            // Güvenli versiyon kontrolü
+            String latestVersion = versionData.optString("latestVersion", launcherVersion);
+            maintenanceMode = versionData.optBoolean("maintenanceMode", false);
+
+            // DÜZELTME: Parantez hatası giderildi
+            if (!latestVersion.equals(launcherVersion)) {
+                Platform.runLater(() -> showUpdateDialog(latestVersion));
             }
-        } catch (URISyntaxException e) {
-            throw new IOException("Geçersiz URL: " + url, e);
+
+        } catch (Exception e) {
+            versionData = new JSONObject();
+            versionData.put("latestVersion", launcherVersion);
+            versionData.put("maintenanceMode", false);
+            System.err.println("Version check failed: " + e.getMessage());
         }
     }
 
-    private void extractZip(Path zipFile, Path destDir) throws IOException {
-        Files.createDirectories(destDir);
-        try (ZipInputStream zis = new ZipInputStream(Files.newInputStream(zipFile))) {
-            ZipEntry entry;
-            while ((entry = zis.getNextEntry()) != null) {
-                Path entryPath = destDir.resolve(entry.getName());
-                if (entry.isDirectory()) {
-                    Files.createDirectories(entryPath);
-                } else {
-                    Files.createDirectories(entryPath.getParent());
-                    try (OutputStream out = Files.newOutputStream(entryPath)) {
-                        byte[] buffer = new byte[8192];
-                        int len;
-                        while ((len = zis.read(buffer)) > 0) {
-                            out.write(buffer, 0, len);
-                        }
-                    }
-                }
-                zis.closeEntry();
-            }
+    private void downloadAssets() {
+        // This would download required game assets
+        // Simulated for now
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
-    private void cleanEmptyDirectories(Path dir) throws IOException {
-        Files.walkFileTree(dir, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
-                    if (!stream.iterator().hasNext() && !dir.equals(Paths.get(APP_DATA))) {
-                        Files.delete(dir);
-                        log("Boş dizin silindi: " + dir);
-                    }
-                }
-                return FileVisitResult.CONTINUE;
+    private void setupFabric() {
+        // Check if Fabric is already installed
+        Path fabricJsonPath = Paths.get(TERRAMONIC_DIR, "versions", MINECRAFT_VERSION + "-fabric" + FABRIC_VERSION, MINECRAFT_VERSION + "-fabric" + FABRIC_VERSION + ".json");
+
+        if (!Files.exists(fabricJsonPath)) {
+            try {
+                // Download Fabric installer
+                Path installerPath = Paths.get(TERRAMONIC_DIR, "fabric-installer.jar");
+                downloadFile(FABRIC_INSTALLER_URL, installerPath.toString());
+
+                // Run installer
+                ProcessBuilder processBuilder = new ProcessBuilder(
+                        "java",
+                        "-jar", installerPath.toString(),
+                        "client",
+                        "-mcversion", MINECRAFT_VERSION,
+                        "-loader", FABRIC_VERSION,
+                        "-dir", TERRAMONIC_DIR
+                );
+
+                Process process = processBuilder.start();
+                process.waitFor();
+
+                // Clean up installer
+                Files.deleteIfExists(installerPath);
+
+            } catch (Exception e) {
+                e.printStackTrace();
+                // Show error but continue
+                Platform.runLater(() -> showError("Fabric Setup Error", e));
             }
-        });
-    }
-
-    private void showUpdateDialog(String newVersion) {
-        Platform.runLater(() -> {
-            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
-            alert.setTitle("Yeni Güncelleme");
-            alert.setHeaderText("Yeni bir güncelleme mevcut: v" + newVersion);
-            alert.setContentText("Şimdi güncellemek ister misiniz?");
-
-            Optional<ButtonType> result = alert.showAndWait();
-            if (result.isPresent() && result.get() == ButtonType.OK) {
-                downloadUpdate(newVersion);
-            } else {
-                updateStatus("Hazır");
-                updateProgress(0.5);
-                loadNews();
-                showMainUI();
-            }
-        });
-    }
-
-    private void downloadUpdate(String newVersion) {
-        log("Güncelleme indiriliyor: v" + newVersion);
-        updateStatus("Güncelleme indiriliyor...");
-        PauseTransition pause = new PauseTransition(Duration.seconds(2));
-        pause.setOnFinished(e -> {
-            currentVersion = newVersion;
-            saveConfig();
-            updateStatus("Güncelleme tamamlandı");
-            updateProgress(0.5);
-            loadNews();
-            showMainUI();
-        });
-        pause.play();
+        }
     }
 
     private void loadNews() {
-        Platform.runLater(() -> newsItemsContainer.getChildren().clear());
-        if (versionData != null && versionData.has("haberler")) {
+        if (versionData != null && versionData.has("news")) {
             try {
-                JSONObject news = versionData.getJSONObject("haberler");
-                List<VBox> newsItems = new ArrayList<>();
-                for (int i = 1; i <= 3; i++) {
-                    String titleKey = i == 1 ? "baslik" : "baslik" + i;
-                    String contentKey = i == 1 ? "icerik" : "icerik" + i;
-                    if (news.has(titleKey) && news.has(contentKey)) {
-                        String title = news.getString(titleKey);
-                        String content = news.getString(contentKey);
-                        newsItems.add(createNewsItem(title, content));
-                    }
+                JSONArray newsArray = versionData.getJSONArray("news");
+                StringBuilder newsBuilder = new StringBuilder();
+
+                for (int i = 0; i < newsArray.length(); i++) {
+                    JSONObject newsItem = newsArray.getJSONObject(i);
+                    String title = newsItem.getString("title");
+                    String content = newsItem.getString("content");
+
+                    newsBuilder.append("• ").append(title).append("\n");
+                    newsBuilder.append(content).append("\n\n");
                 }
+
+                String newsContent = newsBuilder.toString().trim();
+
                 Platform.runLater(() -> {
-                    newsItemsContainer.getChildren().clear();
-                    newsItemsContainer.getChildren().addAll(newsItems);
+                    if (newsText != null) {
+                        newsText.setText(newsContent);
+                    }
                 });
+
             } catch (Exception e) {
-                log("Haberler yüklenemedi: " + e.getMessage());
+                e.printStackTrace();
                 Platform.runLater(() -> {
-                    newsItemsContainer.getChildren().clear();
-                    VBox defaultItem = createNewsItem("Hoş Geldiniz!", "TerraMonic'e hoş geldiniz! En iyi deneyimi yaşamak için ayarlarınızı yapılandırın.");
-                    newsItemsContainer.getChildren().add(defaultItem);
+                    if (newsText != null) {
+                        newsText.setText("Failed to load news. Check your internet connection.");
+                    }
                 });
             }
         } else {
             Platform.runLater(() -> {
-                newsItemsContainer.getChildren().clear();
-                VBox defaultItem = createNewsItem("Hoş Geldiniz!", "TerraMonic'e hoş geldiniz! En iyi deneyimi yaşamak için ayarlarınızı yapılandırın.");
-                newsItemsContainer.getChildren().add(defaultItem);
+                if (newsText != null) {
+                    newsText.setText("• Welcome to TerraMonic!\n\nCheck back here for updates and announcements.");
+                }
             });
         }
     }
 
-    private VBox createNewsItem(String title, String content) {
-        VBox newsItem = new VBox(10);
-        newsItem.getStyleClass().add("news-item");
+    private void loadPlayerHead() {
+        if (playerHead != null && !username.isEmpty()) {
+            Task<Void> task = new Task<Void>() {
+                @Override
+                protected Void call() throws Exception {
+                    try {
+                        // Try to load player skin from Minecraft API
+                        String playerHeadUrl = "https://crafatar.com/avatars/" + username + "?size=80&overlay";
+                        Image headImage = new Image(playerHeadUrl);
 
-        Label titleLabel = new Label(title);
-        titleLabel.setFont(Font.font("Arial", FontWeight.BOLD, 14));
-        titleLabel.setTextFill(PRIMARY_COLOR);
-        titleLabel.setWrapText(true);
+                        Platform.runLater(() -> {
+                            playerHead.setImage(headImage);
+                        });
 
-        Label contentLabel = new Label(content);
-        contentLabel.setFont(Font.font("Arial", 12));
-        contentLabel.setTextFill(TEXT_COLOR);
-        contentLabel.setWrapText(true);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        // Use default head if failed
+                    }
+                    return null;
+                }
+            };
 
-        Separator separator = new Separator();
-
-        newsItem.getChildren().addAll(titleLabel, contentLabel, separator);
-        return newsItem;
+            executor.submit(task);
+        }
     }
 
-    private void checkGameInstallation() {
-        Service<Void> installationService = new Service<>() {
+    private void loadIcon(ImageView imageView) {
+        Task<Void> task = new Task<Void>() {
             @Override
-            protected Task<Void> createTask() {
-                return new Task<>() {
-                    @Override
-                    protected Void call() throws Exception {
-                        performGameInstallation();
-                        return null;
+            protected Void call() throws Exception {
+                try {
+                    // Try to load from local file first
+                    Path iconPath = Paths.get(TERRAMONIC_DIR, "icon.png");
+
+                    if (!Files.exists(iconPath)) {
+                        // Download icon from URL
+                        downloadFile(ICON_URL, iconPath.toString());
                     }
-                };
+
+                    // Load the image
+                    Image iconImage = new Image(new FileInputStream(iconPath.toFile()));
+
+                    Platform.runLater(() -> {
+                        imageView.setImage(iconImage);
+                        mainStage.getIcons().add(iconImage);
+                    });
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    // Continue without icon if failed
+                }
+                return null;
             }
         };
 
-        installationService.setOnSucceeded(e -> {
-            log("Oyun kurulumu tamamlandı");
-            updateUIAfterInstallation(true);
-        });
-
-        installationService.setOnFailed(e -> {
-            Throwable ex = installationService.getException();
-            log("Oyun kurulumu başarısız: " + (ex != null ? ex.getMessage() : "Bilinmeyen hata"));
-            updateUIAfterInstallation(false);
-        });
-
-        installationService.start();
+        executor.submit(task);
     }
 
-    private void performGameInstallation() {
-        updateInstallationStatus("Oyun dosyaları kontrol ediliyor...", 0.5);
-        try {
-            // Verify game files
-            verifyGameFiles();
+    private void launchGame() {
+        // Create cool launch animation
+        fadeOutContent();
 
-            // Install vanilla Minecraft
-            if (!installVanillaMinecraft()) {
-                handleInstallationError("Vanilla Minecraft kurulumu başarısız");
-                return;
-            }
-
-            // Fetch version JSON
-            updateInstallationStatus("Sürüm bilgileri alınıyor...", 0.6);
-            if (!fetchMinecraftVersionJson()) {
-                handleInstallationError("Sürüm bilgisi alınamadı");
-                return;
-            }
-
-            // Download libraries
-            updateInstallationStatus("Kütüphaneler indiriliyor...", 0.7);
-            if (!downloadMinecraftLibraries()) {
-                handleInstallationError("Kütüphaneler indirilemedi");
-                return;
-            }
-
-            // Install Fabric
-            if (!ensureFabricInstalled()) {
-                return; // Error already handled
-            }
-
-            // Download assets
-            updateInstallationStatus("Oyun kaynakları indiriliyor...", 0.9);
-            if (!downloadAssets()) {
-                handleInstallationError("Oyun kaynakları indirilemedi");
-                return;
-            }
-
-            // Installation complete
-            completeInstallation();
-            cleanupAfterInstallation();
-        } catch (Exception e) {
-            handleInstallationError("Kurulum sırasında beklenmeyen hata: " + e.getMessage());
-        }
-    }
-
-    private void verifyGameFiles() {
-        updateInstallationStatus("Oyun dosyaları doğrulanıyor...", 0.3);
-        try {
-            // Ensure directories exist
-            Files.createDirectories(Paths.get(MINECRAFT_DIR, "versions"));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR, "libraries"));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR, "assets"));
-            Files.createDirectories(Paths.get(MINECRAFT_DIR, "natives"));
-
-            // Verify core files
-            Path fabricJar = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION + "-fabric-" + FABRIC_VERSION, GAME_JAR);
-            if (!Files.exists(fabricJar)) {
-                throw new IOException("Fabric JAR bulunamadı");
-            }
-
-            Path mcJar = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".jar");
-            if (!Files.exists(mcJar)) {
-                throw new IOException("Minecraft JAR bulunamadı");
-            }
-
-            updateInstallationStatus("Oyun dosyaları doğrulandı", 0.4);
-        } catch (Exception e) {
-            handleInstallationError("Dosya doğrulama hatası: " + e.getMessage());
-        }
-    }
-
-    private boolean ensureFabricInstalled() {
-        Path fabricJarPath = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION + "-fabric-" + FABRIC_VERSION, GAME_JAR);
-        Path versionDir = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION + "-fabric-" + FABRIC_VERSION);
-        Path versionJsonPath = versionDir.resolve(MC_VERSION + "-fabric-" + FABRIC_VERSION + ".json");
-
-        if (!Files.exists(fabricJarPath) || !Files.exists(versionJsonPath)) {
-            updateInstallationStatus("Fabric yükleniyor...", 0.7);
-            try {
-                // Create temp directory
-                Path tempDir = Paths.get(MINECRAFT_DIR, "temp");
-                Files.createDirectories(tempDir);
-
-                // Download installer
-                Path installerPath = tempDir.resolve("fabric-installer.jar");
-                updateInstallationStatus("Fabric yükleyici indiriliyor...", 0.75);
-                downloadFile(FABRIC_INSTALLER_URL, installerPath);
-
-                // Run installer
-                updateInstallationStatus("Fabric kuruluyor...", 0.8);
-                ProcessBuilder pb = new ProcessBuilder(
-                        getJavaPath(),
-                        "-jar", installerPath.toString(),
-                        "client",
-                        "-dir", MINECRAFT_DIR,
-                        "-mcversion", MC_VERSION,
-                        "-loader", FABRIC_VERSION,
-                        "-noprofile"
-                );
-                pb.redirectErrorStream(true);
-                Process process = pb.start();
-
-                // Monitor installer output
-                try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-                    String line;
-                    while ((line = reader.readLine()) != null) {
-                        log("Fabric Installer: " + line);
-                    }
-                }
-
-                int exitCode = process.waitFor();
-                Files.deleteIfExists(installerPath); // Clean up installer
-
-                if (exitCode != 0) {
-                    handleInstallationError("Fabric yükleyici hata kodu: " + exitCode);
-                    return false;
-                }
-
-                // Verify Fabric JAR and JSON
-                if (!Files.exists(fabricJarPath) || !Files.exists(versionJsonPath)) {
-                    handleInstallationError("Fabric JAR veya JSON dosyası oluşturulamadı");
-                    return false;
-                }
-
-                log("Fabric başarıyla yüklendi");
-                return true;
-            } catch (Exception e) {
-                handleInstallationError("Fabric yükleme hatası: " + e.getMessage());
-                return false;
-            } finally {
-                // Clean up temp directory
+        // Start game launch process
+        Task<Void> launchTask = new Task<Void>() {
+            @Override
+            protected Void call() throws Exception {
                 try {
-                    Path tempDir = Paths.get(MINECRAFT_DIR, "temp");
-                    if (Files.exists(tempDir)) {
-                        deleteDirectory(tempDir);
+                    updateDownloadStatus("Preparing to launch game...");
+
+                    // Create launch command
+                    List<String> command = new ArrayList<>();
+                    command.add("javaw");
+                    command.add("-Xmx" + allocatedRam.get() + "M");
+
+                    // Add Minecraft and Fabric parameters
+                    command.add("-jar");
+                    command.add(TERRAMONIC_DIR + "/versions/" + MINECRAFT_VERSION + "-fabric" + FABRIC_VERSION + "/" + MINECRAFT_VERSION + "-fabric" + FABRIC_VERSION + ".jar");
+
+                    // Add username
+                    command.add("--username");
+                    command.add(username);
+
+                    // Add fullscreen parameter if enabled
+                    if (fullscreenMode) {
+                        command.add("--fullscreen");
                     }
-                } catch (IOException e) {
-                    log("Temp dizini silinirken hata: " + e.getMessage());
-                }
-            }
-        }
-        return true;
-    }
 
-    private void cleanupAfterInstallation() {
-        try {
-            updateInstallationStatus("Temizlik yapılıyor...", 0.95);
-            Path tempDir = Paths.get(MINECRAFT_DIR, "temp");
-            if (Files.exists(tempDir)) {
-                deleteDirectory(tempDir);
-            }
-            updateInstallationStatus("Temizlik tamamlandı", 1.0);
-        } catch (IOException e) {
-            log("Temizlik sırasında hata: " + e.getMessage());
-        }
-    }
+                    updateDownloadStatus("Starting Minecraft...");
 
-    private void updateInstallationStatus(String status, double progress) {
-        Platform.runLater(() -> {
-            updateStatus(status);
-            updateProgress(progress);
-        });
-    }
+                    // Start the process
+                    ProcessBuilder processBuilder = new ProcessBuilder(command);
+                    processBuilder.directory(new File(TERRAMONIC_DIR));
+                    Process process = processBuilder.start();
 
-    private void handleInstallationError(String errorMessage) {
-        log("Kurulum hatası: " + errorMessage);
-        updateInstallationStatus("Hata: " + errorMessage, 0.0);
-        showError(errorMessage);
-    }
-
-    private void completeInstallation() {
-        updateInstallationStatus("Kurulum tamamlandı", 1.0);
-        Platform.runLater(() -> {
-            playBtn.setDisable(false);
-            playBtn.setText("OYNA");
-        });
-    }
-
-    private void updateUIAfterInstallation(boolean success) {
-        Platform.runLater(() -> {
-            if (success) {
-                playBtn.setDisable(false);
-                playBtn.setText("OYNA");
-                updateStatus("Oyun hazır!");
-                updateProgress(1.0);
-            } else {
-                playBtn.setDisable(true);
-                playBtn.setText("KURULUM HATASI");
-                updateStatus("Kurulum başarısız");
-                updateProgress(0.0);
-                showError("Oyun kurulumu başarısız, lütfen logları kontrol edin.");
-            }
-        });
-    }
-
-    private void checkForJavaInstallation() {
-        try {
-            Process process = Runtime.getRuntime().exec(new String[]{getJavaPath(), "-version"});
-            int exitCode = process.waitFor();
-            if (exitCode != 0) {
-                showError("Java kurulu değil veya yolu yanlış ayarlanmış!");
-            }
-        } catch (Exception e) {
-            showError("Java kontrol edilemedi: " + e.getMessage());
-        }
-    }
-
-    private void deleteDirectory(Path dir) throws IOException {
-        Files.walkFileTree(dir, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                Files.delete(file);
-                return FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult postVisitDirectory(Path dir, IOException exc) throws IOException {
-                Files.delete(dir);
-                return FileVisitResult.CONTINUE;
-            }
-        });
-    }
-
-    private boolean installVanillaMinecraft() {
-        try {
-            updateStatus("Vanilla Minecraft indiriliyor...");
-            URI manifestUri = new URI(MINECRAFT_MANIFEST_URL);
-            HttpURLConnection connection = (HttpURLConnection) manifestUri.toURL().openConnection();
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(5000);
-            connection.setReadTimeout(5000);
-
-            try (InputStream in = connection.getInputStream();
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(in))) {
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    response.append(line);
-                }
-
-                JSONObject manifest = new JSONObject(response.toString());
-                JSONArray versions = manifest.getJSONArray("versions");
-                for (int i = 0; i < versions.length(); i++) {
-                    JSONObject version = versions.getJSONObject(i);
-                    if (version.getString("id").equals(MC_VERSION)) {
-                        String versionJsonUrl = version.getString("url");
-                        HttpURLConnection versionConnection = (HttpURLConnection) new URI(versionJsonUrl).toURL().openConnection();
-                        versionConnection.setRequestMethod("GET");
-                        try (InputStream versionIn = versionConnection.getInputStream();
-                             BufferedReader versionReader = new BufferedReader(new InputStreamReader(versionIn))) {
-                            StringBuilder versionResponse = new StringBuilder();
-                            while ((line = versionReader.readLine()) != null) {
-                                versionResponse.append(line);
-                            }
-                            JSONObject versionJson = new JSONObject(versionResponse.toString());
-
-                            // Download client.jar
-                            JSONObject downloads = versionJson.getJSONObject("downloads");
-                            JSONObject client = downloads.getJSONObject("client");
-                            String clientUrl = client.getString("url");
-                            String clientSha1 = client.getString("sha1");
-                            Path clientPath = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".jar");
-                            Files.createDirectories(clientPath.getParent());
-
-                            if (!Files.exists(clientPath) || !verifyFileChecksum(clientPath, clientSha1)) {
-                                downloadFile(clientUrl, clientPath);
-                                if (!verifyFileChecksum(clientPath, clientSha1)) {
-                                    log("Client JAR doğrulama hatası");
-                                    return false;
-                                }
-                            }
-
-                            // Save version JSON
-                            Path versionJsonPath = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".json");
-                            try (FileWriter writer = new FileWriter(versionJsonPath.toFile())) {
-                                writer.write(versionJson.toString(2));
-                            }
-
-                            log("Vanilla Minecraft " + MC_VERSION + " kuruldu");
-                            return true;
+                    // Close launcher after successful launch
+                    Platform.runLater(() -> {
+                        // Wait briefly before shutting down
+                        try {
+                            Thread.sleep(3000);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
                         }
-                    }
+
+                        Platform.exit();
+                    });
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Platform.runLater(() -> {
+                        fadeInContent();
+                        showError("Launch Error", e);
+                    });
                 }
+
+                return null;
             }
-        } catch (Exception e) {
-            log("Vanilla Minecraft kurulamadı: " + e.getMessage());
-            return false;
-        }
-        return false;
+        };
+
+        executor.submit(launchTask);
     }
 
-    private boolean fetchMinecraftVersionJson() {
-        try {
-            Path versionJsonPath = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".json");
-            if (Files.exists(versionJsonPath)) {
-                try (BufferedReader reader = Files.newBufferedReader(versionJsonPath)) {
-                    minecraftVersionJson = reader.lines().collect(Collectors.joining());
-                    return true;
+    private void fadeOutContent() {
+        FadeTransition fade = new FadeTransition(Duration.millis(500), mainRoot);
+        fade.setFromValue(1);
+        fade.setToValue(0.3);
+        fade.play();
+    }
+
+    private void fadeInContent() {
+        FadeTransition fade = new FadeTransition(Duration.millis(500), mainRoot);
+        fade.setFromValue(0.3);
+        fade.setToValue(1);
+        fade.play();
+    }
+
+    private void updateStatus(double progress, String status) {
+        Platform.runLater(() -> {
+            progressBar.setProgress(progress);
+            statusLabel.setText(status);
+        });
+    }
+
+    private void updateDownloadStatus(String status) {
+        Platform.runLater(() -> {
+            downloadStatusLabel.setText(status);
+        });
+    }
+
+    private String downloadString(String urlStr) throws IOException {
+        URL url = new URL(urlStr);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("GET");
+
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+
+            StringBuilder response = new StringBuilder();
+            String line;
+
+            while ((line = reader.readLine()) != null) {
+                response.append(line).append("\n");
+            }
+
+            return response.toString();
+        }
+    }
+
+    private void downloadFile(String urlStr, String destination) throws IOException {
+        URL url = new URL(urlStr);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setRequestMethod("GET");
+
+        try (InputStream in = connection.getInputStream();
+             FileOutputStream out = new FileOutputStream(destination)) {
+
+            byte[] buffer = new byte[8192];
+            int bytesRead;
+
+            while ((bytesRead = in.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+            }
+        }
+    }
+
+    private void showUpdateDialog(String latestVersion) {
+        Platform.runLater(() -> {
+            Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+            alert.setTitle("Update Available");
+            alert.setHeaderText("New Launcher Version Available");
+            alert.setContentText(
+                    "A new version of TerraMonic Launcher (v" + latestVersion + ") is available. " +
+                            "You are currently running v" + launcherVersion + ". Would you like to update now?"
+            );
+
+            // Style the dialog to match the launcher theme
+            DialogPane dialogPane = alert.getDialogPane();
+            dialogPane.setStyle(
+                    "-fx-background-color: " + toHexString(DARK_BG) + ";" +
+                            "-fx-text-fill: white;" +
+                            "-fx-font-family: 'Verdana';"
+            );
+
+            // Customize button styles
+            ButtonBar buttonBar = (ButtonBar) dialogPane.lookup(".button-bar");
+            if (buttonBar != null) {
+                buttonBar.setStyle("-fx-background-color: " + toHexString(DARK_BG) + ";");
+                for (Node node : buttonBar.getButtons()) {
+                    Button button = (Button) node;
+                    button.setStyle(
+                            "-fx-background-color: " + toHexString(PRIMARY_COLOR) + ";" +
+                                    "-fx-text-fill: white;" +
+                                    "-fx-font-weight: bold;" +
+                                    "-fx-background-radius: 5;" +
+                                    "-fx-cursor: hand;"
+                    );
+                    button.setOnMouseEntered(e -> button.setStyle(
+                            "-fx-background-color: " + toHexString(PRIMARY_COLOR.brighter()) + ";" +
+                                    "-fx-text-fill: white;" +
+                                    "-fx-font-weight: bold;" +
+                                    "-fx-background-radius: 5;"
+                    ));
+                    button.setOnMouseExited(e -> button.setStyle(
+                            "-fx-background-color: " + toHexString(PRIMARY_COLOR) + ";" +
+                                    "-fx-text-fill: white;" +
+                                    "-fx-font-weight: bold;" +
+                                    "-fx-background-radius: 5;"
+                    ));
                 }
             }
 
-            URI manifestUri = new URI(MINECRAFT_MANIFEST_URL);
-            HttpURLConnection connection = (HttpURLConnection) manifestUri.toURL().openConnection();
-            connection.setRequestMethod("GET");
-            connection.setConnectTimeout(5000);
-            connection.setReadTimeout(5000);
+            // Create custom buttons
+            ButtonType updateButton = new ButtonType("Update Now", ButtonBar.ButtonData.OK_DONE);
+            ButtonType skipButton = new ButtonType("Skip", ButtonBar.ButtonData.CANCEL_CLOSE);
+            alert.getButtonTypes().setAll(updateButton, skipButton);
 
-            try (InputStream in = connection.getInputStream();
-                 BufferedReader reader = new BufferedReader(new InputStreamReader(in))) {
-                StringBuilder response = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    response.append(line);
-                }
+            // Show dialog and handle response
+            Optional<ButtonType> result = alert.showAndWait();
+            if (result.isPresent() && result.get() == updateButton) {
+                // Start update process
+                initiateUpdate(latestVersion);
+            }
+        });
+    }
 
-                JSONObject manifest = new JSONObject(response.toString());
-                JSONArray versions = manifest.getJSONArray("versions");
-                for (int i = 0; i < versions.length(); i++) {
-                    JSONObject version = versions.getJSONObject(i);
-                    if (version.getString("id").equals(MC_VERSION)) {
-                        String versionJsonUrl = version.getString("url");
-                        HttpURLConnection versionConnection = (HttpURLConnection) new URI(versionJsonUrl).toURL().openConnection();
-                        versionConnection.setRequestMethod("GET");
-                        try (InputStream versionIn = versionConnection.getInputStream();
-                             BufferedReader versionReader = new BufferedReader(new InputStreamReader(versionIn))) {
-                            StringBuilder versionResponse = new StringBuilder();
-                            while ((line = versionReader.readLine()) != null) {
-                                versionResponse.append(line);
-                            }
-                            minecraftVersionJson = versionResponse.toString();
-                            Files.createDirectories(versionJsonPath.getParent());
-                            try (FileWriter writer = new FileWriter(versionJsonPath.toFile())) {
-                                writer.write(minecraftVersionJson);
-                            }
-                            return true;
+    private void initiateUpdate(String latestVersion) {
+        Task<Void> updateTask = new Task<Void>() {
+            @Override
+            protected Void call() throws Exception {
+                try {
+                    updateStatus(0.0, "Preparing to update launcher...");
+
+                    // Get update URL from version data
+                    String updateUrl = versionData.optString("updateUrl", "");
+                    if (updateUrl.isEmpty()) {
+                        throw new IOException("Update URL not provided in version data.");
+                    }
+
+                    // Download the new launcher version
+                    Path updatePath = Paths.get(TERRAMONIC_DIR, "launcher-update.zip");
+                    updateStatus(0.3, "Downloading update...");
+                    downloadFile(updateUrl, updatePath.toString());
+
+                    // Extract and replace launcher files
+                    updateStatus(0.7, "Installing update...");
+                    extractUpdate(updatePath);
+
+                    // Clean up
+                    Files.deleteIfExists(updatePath);
+                    updateStatus(1.0, "Update complete! Restarting...");
+
+                    // Restart launcher
+                    Platform.runLater(() -> {
+                        try {
+                            // Launch new version (simplified; actual implementation depends on launcher packaging)
+                            String javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
+                            String jarPath = new File(Main.class.getProtectionDomain().getCodeSource().getLocation().toURI()).getPath();
+                            new ProcessBuilder(javaBin, "-jar", jarPath).start();
+
+                            // Close current instance
+                            Platform.exit();
+                        } catch (Exception e) {
+                            showError("Update Restart Error", e);
                         }
-                    }
+                    });
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    Platform.runLater(() -> showError("Update Error", e));
                 }
+                return null;
             }
-        } catch (Exception e) {
-            log("Minecraft sürüm bilgisi alınamadı: " + e.getMessage());
-            offlineMode = true;
-        }
-        return false;
+        };
+
+        executor.submit(updateTask);
     }
 
-    private boolean downloadMinecraftLibraries() {
-        if (minecraftVersionJson == null) {
-            return false;
-        }
 
-        try {
-            JSONObject versionData = new JSONObject(minecraftVersionJson);
-            JSONArray libraries = versionData.getJSONArray("libraries");
-            for (int i = 0; i < libraries.length(); i++) {
-                JSONObject library = libraries.getJSONObject(i);
-                String name = library.getString("name");
-                JSONObject downloads = library.getJSONObject("downloads");
-                JSONObject artifact = downloads.getJSONObject("artifact");
-                String url = artifact.getString("url");
-                String path = artifact.getString("path");
-                String sha1 = artifact.getString("sha1");
-                Path targetPath = Paths.get(MINECRAFT_DIR, "libraries", path);
-                Files.createDirectories(targetPath.getParent());
-
-                if (Files.exists(targetPath) && verifyFileChecksum(targetPath, sha1)) {
-                    minecraftLibraries.put(name, targetPath.toString());
+    private void extractUpdate(Path zipPath) throws IOException {
+        // Extract update zip to launcher directory
+        try (ZipInputStream zis = new ZipInputStream(Files.newInputStream(zipPath))) {
+            ZipEntry entry;
+            byte[] buffer = new byte[8192];
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
                     continue;
                 }
 
-                downloadFile(url, targetPath);
-                if (verifyFileChecksum(targetPath, sha1)) {
-                    minecraftLibraries.put(name, targetPath.toString());
-                } else {
-                    log("Kütüphane doğrulama hatası: " + name);
-                    return false;
-                }
-            }
-            return true;
-        } catch (Exception e) {
-            log("Kütüphaneler indirilemedi: " + e.getMessage());
-            return false;
-        }
-    }
+                Path outPath = Paths.get(TERRAMONIC_DIR, entry.getName());
+                Files.createDirectories(outPath.getParent());
 
-    private boolean downloadAssets() {
-        if (minecraftVersionJson == null) {
-            return false;
-        }
-
-        try {
-            JSONObject versionData = new JSONObject(minecraftVersionJson);
-            JSONObject assetIndex = versionData.getJSONObject("assetIndex");
-            String assetIndexUrl = assetIndex.getString("url");
-            String assetIndexSha1 = assetIndex.getString("sha1");
-
-            Path assetIndexPath = Paths.get(MINECRAFT_DIR, "assets", "indexes", MC_VERSION + ".json");
-            Files.createDirectories(assetIndexPath.getParent());
-
-            if (!Files.exists(assetIndexPath) || !verifyFileChecksum(assetIndexPath, assetIndexSha1)) {
-                updateStatus("Asset index indiriliyor...");
-                downloadFile(assetIndexUrl, assetIndexPath);
-                if (!verifyFileChecksum(assetIndexPath, assetIndexSha1)) {
-                    log("Asset index doğrulama hatası");
-                    return false;
-                }
-            }
-
-            try (BufferedReader reader = Files.newBufferedReader(assetIndexPath)) {
-                JSONObject assets = new JSONObject(reader.lines().collect(Collectors.joining()));
-                JSONObject objects = assets.getJSONObject("objects");
-                Iterator<String> keys = objects.keys();
-                int totalAssets = objects.length();
-                int downloadedAssets = 0;
-
-                while (keys.hasNext()) {
-                    String key = keys.next();
-                    JSONObject asset = objects.getJSONObject(key);
-                    String hash = asset.getString("hash");
-                    String hashPrefix = hash.substring(0, 2);
-                    Path assetPath = Paths.get(MINECRAFT_DIR, "assets", "objects", hashPrefix, hash);
-                    Files.createDirectories(assetPath.getParent());
-
-                    if (!Files.exists(assetPath) || !verifyFileChecksum(assetPath, hash)) {
-                        String assetUrl = "https://resources.download.minecraft.net/" + hashPrefix + "/" + hash;
-                        downloadFile(assetUrl, assetPath);
-                        if (!verifyFileChecksum(assetPath, hash)) {
-                            log("Asset doğrulama hatası: " + key);
-                            return false;
-                        }
-                    }
-
-                    downloadedAssets++;
-                    double progress = (double) downloadedAssets / totalAssets;
-                    updateProgress(0.8 + progress * 0.2);
-                }
-            }
-
-            return true;
-        } catch (Exception e) {
-            log("Asset'ler indirilemedi: " + e.getMessage());
-            return false;
-        }
-    }
-
-    private boolean verifyFileChecksum(Path file, String expectedSha1) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-1");
-            try (InputStream fis = Files.newInputStream(file)) {
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                while ((bytesRead = fis.read(buffer)) != -1) {
-                    digest.update(buffer, 0, bytesRead);
-                }
-            }
-            byte[] hashedBytes = digest.digest();
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hashedBytes) {
-                sb.append(String.format("%02x", b));
-            }
-            return sb.toString().equalsIgnoreCase(expectedSha1);
-        } catch (Exception e) {
-            log("Dosya doğrulama hatası: " + e.getMessage());
-            return false;
-        }
-    }
-
-    // Main game launch method
-    private void launchGame() {
-        if (isGameRunning.get()) {
-            showError("Oyun zaten çalışıyor!");
-            return;
-        }
-
-        String username = usernameField.getText().trim();
-        if (username.isEmpty()) {
-            showError("Lütfen geçerli bir kullanıcı adı girin!");
-            return;
-        }
-
-        playBtn.setDisable(true);
-        playBtn.setText("BAŞLATILIYOR...");
-
-        Service<Void> gameLauncher = new Service<>() {
-            @Override
-            protected Task<Void> createTask() {
-                return new Task<>() {
-                    @Override
-                    protected Void call() throws Exception {
-                        isGameRunning.set(true);
-                        updateStatus("Oyun başlatılıyor...");
-                        updateProgress(0.0);
-                        log("Kullanıcı adı: " + username);
-
-                        // Prepare launch parameters
-                        String ram = ramComboBox.getValue() != null ? ramComboBox.getValue() : "4";
-                        String resolution = resolutionComboBox.getValue() != null ? resolutionComboBox.getValue() : "1280x720";
-                        boolean fullscreen = fullscreenCheck.isSelected();
-
-                        // Build Java command
-                        List<String> command = new ArrayList<>();
-                        command.add(getJavaPath());
-                        command.add("-Xmx" + ram + "G");
-                        command.add("-Xms" + ram + "G");
-
-                        String jvmArgs = config.getProperty("jvmArgs", "");
-                        if (!jvmArgs.isEmpty()) {
-                            command.addAll(Arrays.asList(jvmArgs.split("\\s+")));
-                        }
-
-                        command.add("-Djava.library.path=" + Paths.get(MINECRAFT_DIR, "natives"));
-                        command.add("-cp");
-                        command.add(buildClasspath());
-
-                        command.add("net.fabricmc.loader.impl.game.minecraft.MinecraftGameProvider");
-                        command.addAll(buildGameArguments(username, resolution, fullscreen));
-
-                        // Launch process
-                        launchMinecraftProcess(command);
-                        return null;
-                    }
-
-                    private void updateProgress(double v) {
-                    }
-                };
-            }
-        };
-
-        gameLauncher.setOnSucceeded(e -> {
-            isGameRunning.set(false);
-            updateUIAfterGameExit(true);
-        });
-
-        gameLauncher.setOnFailed(e -> {
-            isGameRunning.set(false);
-            Throwable ex = gameLauncher.getException();
-            log("Oyun başlatma hatası: " + (ex != null ? ex.getMessage() : "Bilinmeyen hata"));
-            updateUIAfterGameExit(false);
-        });
-
-        gameLauncher.start();
-    }
-
-    // Helper method to get Java path
-    private String getJavaPath() {
-        String customJavaPath = config.getProperty("javaPath");
-        if (customJavaPath != null && !customJavaPath.isEmpty() && Files.exists(Paths.get(customJavaPath))) {
-            return customJavaPath;
-        }
-        String defaultPath = System.getProperty("java.home") + File.separator + "bin" + File.separator +
-                (System.getProperty("os.name").toLowerCase().contains("win") ? "javaw.exe" : "java");
-        if (!Files.exists(Paths.get(defaultPath))) {
-            throw new IllegalStateException("Java executable not found: " + defaultPath);
-        }
-        return defaultPath;
-    }
-
-    // Helper method to build classpath
-    private String buildClasspath() {
-        StringBuilder classpath = new StringBuilder();
-        for (String libPath : minecraftLibraries.values()) {
-            classpath.append(libPath).append(File.pathSeparator);
-        }
-        classpath.append(Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".jar"));
-        classpath.append(File.pathSeparator);
-        classpath.append(Paths.get(MINECRAFT_DIR, "versions", MC_VERSION + "-fabric-" + FABRIC_VERSION, GAME_JAR));
-        return classpath.toString();
-    }
-
-    // Helper method to build game arguments
-    private List<String> buildGameArguments(String username, String resolution, boolean fullscreen) {
-        List<String> args = new ArrayList<>();
-        args.addAll(Arrays.asList(
-                "--username", username,
-                "--version", MC_VERSION,
-                "--gameDir", MINECRAFT_DIR,
-                "--assetsDir", Paths.get(MINECRAFT_DIR, "assets").toString(),
-                "--assetIndex", MC_VERSION,
-                "--uuid", UUID.randomUUID().toString().replace("-", ""),
-                "--accessToken", "0",
-                "--userType", "mojang",
-                "--versionType", "release"
-        ));
-
-        if (fullscreen) {
-            args.add("--fullscreen");
-        } else {
-            String[] res = resolution.split("x");
-            if (res.length == 2) {
-                args.add("--width");
-                args.add(res[0].trim());
-                args.add("--height");
-                args.add(res[1].trim());
-            }
-        }
-
-        // Add additional game arguments from config
-        if (Boolean.parseBoolean(config.getProperty("showFPS", "true"))) {
-            args.add("--showFPS");
-        }
-        if (Boolean.parseBoolean(config.getProperty("enableVBO", "true"))) {
-            args.add("--vbo");
-        }
-
-        // Add volume settings
-        args.add("--volume");
-        args.add(config.getProperty("masterVolume", "80"));
-        args.add("--musicVolume");
-        args.add(config.getProperty("musicVolume", "60"));
-
-        return args;
-    }
-
-    // Helper method to launch Minecraft process
-    private void launchMinecraftProcess(List<String> command) throws IOException, InterruptedException {
-        updateStatus("Minecraft başlatılıyor...");
-        log("Komut: " + String.join(" ", command));
-
-        ProcessBuilder pb = new ProcessBuilder(command);
-        pb.directory(new File(MINECRAFT_DIR));
-        pb.redirectErrorStream(true);
-
-        Process process = pb.start();
-
-        // Monitor process output
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                log("Minecraft: " + line);
-            }
-        }
-
-        // Wait for process to complete
-        int exitCode = process.waitFor();
-        log("Minecraft çıkış kodu: " + exitCode);
-
-        if (exitCode != 0) {
-            throw new IOException("Minecraft beklenmeyen bir şekilde kapandı, çıkış kodu: " + exitCode);
-        }
-
-        // Handle launcher behavior
-        if (!Boolean.parseBoolean(config.getProperty("keepLauncherOpen", "true"))) {
-            Platform.runLater(() -> {
-                saveConfig();
-                Platform.exit();
-                System.exit(0);
-            });
-        }
-    }
-
-    // Helper method to update UI after game exit
-    private void updateUIAfterGameExit(boolean success) {
-        Platform.runLater(() -> {
-            if (success) {
-                updateStatus("Oyun kapandı");
-                updateProgress(1.0);
-            } else {
-                updateStatus("Oyun başlatılamadı");
-                updateProgress(0.0);
-                showError("Oyun başlatılırken bir hata oluştu, lütfen logları kontrol edin.");
-            }
-            playBtn.setDisable(false);
-            playBtn.setText("OYNA");
-        });
-    }
-
-    //region Additional Utility Methods
-    private void initializeNativeLibraries() {
-        try {
-            updateStatus("Native kütüphaneler hazırlanıyor...");
-            Path nativesDir = Paths.get(MINECRAFT_DIR, "natives");
-            Files.createDirectories(nativesDir);
-
-            JSONObject versionJson = new JSONObject(minecraftVersionJson);
-            JSONArray libraries = versionJson.getJSONArray("libraries");
-            for (int i = 0; i < libraries.length(); i++) {
-                JSONObject library = libraries.getJSONObject(i);
-                if (library.has("downloads") && library.getJSONObject("downloads").has("classifiers")) {
-                    JSONObject classifiers = library.getJSONObject("downloads").getJSONObject("classifiers");
-                    if (classifiers.has("natives-windows")) {
-                        JSONObject nativeLib = classifiers.getJSONObject("natives-windows");
-                        String url = nativeLib.getString("url");
-                        String path = nativeLib.getString("path");
-                        String sha1 = nativeLib.getString("sha1");
-                        Path targetPath = nativesDir.resolve(path);
-
-                        if (!Files.exists(targetPath) || !verifyFileChecksum(targetPath, sha1)) {
-                            downloadFile(url, targetPath);
-                            if (!verifyFileChecksum(targetPath, sha1)) {
-                                log("Native kütüphane doğrulama hatası: " + path);
-                                continue;
-                            }
-                            // Extract native library
-                            extractZip(targetPath, nativesDir);
-                            Files.deleteIfExists(targetPath);
-                        }
+                try (FileOutputStream fos = new FileOutputStream(outPath.toFile())) {
+                    int len;
+                    while ((len = zis.read(buffer)) > 0) {
+                        fos.write(buffer, 0, len);
                     }
                 }
             }
-            log("Native kütüphaneler hazırlandı");
-        } catch (Exception e) {
-            log("Native kütüphaneler hazırlanamadı: " + e.getMessage());
         }
     }
-
-    private void validateInstallation() {
-        try {
-            updateStatus("Kurulum doğrulanıyor...");
-            Path versionDir = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION);
-            Path fabricJar = Paths.get(MINECRAFT_DIR, "versions", GAME_JAR);
-            Path mcJar = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".jar");
-            Path versionJson = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION, MC_VERSION + ".json");
-
-            if (!Files.exists(versionDir) || !Files.exists(fabricJar) || !Files.exists(mcJar) || !Files.exists(versionJson)) {
-                throw new IOException("Eksik kurulum dosyaları");
-            }
-
-            // Validate libraries
-            for (String libPath : minecraftLibraries.values()) {
-                if (!Files.exists(Paths.get(libPath))) {
-                    throw new IOException("Eksik kütüphane: " + libPath);
-                }
-            }
-
-            log("Kurulum doğrulandı");
-        } catch (Exception e) {
-            log("Kurulum doğrulama hatası: " + e.getMessage());
-            handleInstallationError("Kurulum doğrulama başarısız: " + e.getMessage());
-        }
-    }
-
-    private void repairInstallation() {
-        try {
-            updateStatus("Kurulum onarılıyor...");
-            // Delete corrupted directories
-            Path versionDir = Paths.get(MINECRAFT_DIR, "versions", MC_VERSION);
-            Path nativesDir = Paths.get(MINECRAFT_DIR, "natives");
-            if (Files.exists(versionDir)) {
-                deleteDirectory(versionDir);
-            }
-            if (Files.exists(nativesDir)) {
-                deleteDirectory(nativesDir);
-            }
-
-            // Re-run installation
-            performGameInstallation();
-            log("Kurulum onarıldı");
-        } catch (Exception e) {
-            log("Kurulum onarma hatası: " + e.getMessage());
-            handleInstallationError("Kurulum onarılamadı: " + e.getMessage());
-        }
-    }
-    //endregion
-
-    //region Event Handlers
-    private void handleWindowResize() {
-        primaryStage.widthProperty().addListener((obs, oldVal, newVal) -> {
-            // Adjust UI components dynamically
-            double newWidth = newVal.doubleValue();
-            if (newsItemsContainer != null) {
-                newsItemsContainer.setPrefWidth(Math.max(200, newWidth * 0.25));
-            }
-        });
-
-        primaryStage.heightProperty().addListener((obs, oldVal, newVal) -> {
-            // Adjust console height
-            if (consoleArea != null) {
-                consoleArea.setPrefHeight(Math.max(100, newVal.doubleValue() * 0.2));
-            }
-        });
-    }
-
-    private void setupEventHandlers() {
-        // Handle window drag
-        final Delta dragDelta = new Delta();
-        root.setOnMousePressed(e -> {
-            dragDelta.x = primaryStage.getX() - e.getScreenX();
-            dragDelta.y = primaryStage.getY() - e.getScreenY();
-        });
-        root.setOnMouseDragged(e -> {
-            primaryStage.setX(e.getScreenX() + dragDelta.x);
-            primaryStage.setY(e.getScreenY() + dragDelta.y);
-        });
-
-        // Handle window resize events
-        handleWindowResize();
-
-        // Handle username validation
-        usernameField.textProperty().addListener((obs, oldVal, newVal) -> {
-            if (newVal.length() > 16 || newVal.contains(" ")) {
-                usernameField.setText(oldVal);
-                showError("Kullanıcı adı 16 karakterden uzun olamaz ve boşluk içeremez!");
-            }
-        });
-    }
-    //endregion
 }
